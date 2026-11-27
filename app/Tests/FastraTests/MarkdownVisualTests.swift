@@ -6164,7 +6164,7 @@ extension MarkdownVisualTests {
               getSelection().removeAllRanges(); getSelection().addRange(triple);
               fastraVisual.command('italic');
 
-              // 4. WebKit-Inline-Style-Span in toMarkdown + leeres <p></p>
+              // 4. WebKit-Inline-Style-Span in toMarkdown + leeres <p></p> im mehrblockigen Dokument bleibt sichtbare Leerzeile
               const livePs = Array.from(root.querySelectorAll('p:not([data-md-edit-boundary])'));
               const targetP = livePs.at(-1);
               const span = document.createElement('span');
@@ -6180,7 +6180,7 @@ extension MarkdownVisualTests {
               return JSON.stringify({
                 illegalPList, illegalHList, badBoundary,
                 hasStyledBold: md.includes('**Styled**'),
-                emptyRemoved: !/(?:^|\\n)  (?:\\n|$)/.test(md),
+                emptyPreservedAsBlankLine: /(?:^|\\n)  (?:\\n|$)/.test(md),
                 text: root.cloneNode(true).textContent.replace(/[\\s\\u200b]+/g, '')
               });
             })()
@@ -6191,7 +6191,7 @@ extension MarkdownVisualTests {
         #expect(parsed["illegalHList"] as? Bool == false, Comment(rawValue: report))
         #expect(parsed["badBoundary"] as? Bool == false, Comment(rawValue: report))
         #expect(parsed["hasStyledBold"] as? Bool == true, Comment(rawValue: report))
-        #expect(parsed["emptyRemoved"] as? Bool == true, Comment(rawValue: report))
+        #expect(parsed["emptyPreservedAsBlankLine"] as? Bool == true, Comment(rawValue: report))
     }
 
     @Test("Deterministische Abfolge von 60 WYSIWYG-Bearbeitungen bewahrt Text, DOM-Grenzen und Speicherparität",

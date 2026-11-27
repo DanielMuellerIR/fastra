@@ -13343,17 +13343,18 @@
       if (t.data.includes("\u200B")) t.data = t.data.replace(/\u200b/g, "");
     }
   }
-  function normalizeLooseBlankDivs(container) {
+  function normalizeLooseBlankDivs(container, { convertEmptyParagraphs = false } = {}) {
     const doc3 = container.ownerDocument;
     container.querySelectorAll("div:not([data-md-block]):not([data-md-opaque]):not([data-tex]), p").forEach((el) => {
       if (el.classList.contains("fastra-visible-blank-line")) return;
-      if (el.closest("[data-md-opaque],[data-tex],pre,table")) return;
+      if (el.closest("[data-md-opaque],[data-tex],pre,table,li")) return;
+      if (el.hasAttribute("data-md-empty")) return;
       if (el.textContent.replace(/\u200b/g, "").length) return;
       if (el.querySelector("p,div,h1,h2,h3,h4,h5,h6,ul,ol,li,blockquote,table,pre,code,img,input,hr,[data-md-opaque],[data-tex]")) return;
       const onlyInline = Array.from(el.querySelectorAll("*")).every((c) => c.tagName === "BR" || INLINE_WRAP_TAGS.has(c.tagName));
       if (!onlyInline) return;
       const rawBrCount = el.querySelectorAll("br").length;
-      if (el.tagName === "P" && rawBrCount < 2) return;
+      if (el.tagName === "P" && rawBrCount < 2 && !convertEmptyParagraphs) return;
       const brCount = Math.max(1, rawBrCount);
       const frag = doc3.createDocumentFragment();
       for (let i = 0; i < brCount; i++) {
@@ -13579,7 +13580,13 @@
     const template = ownerDocument.createElement("template");
     template.innerHTML = html || "";
     preprocessDOMForParse(template.content, { stripBlockOrigin: true });
-    normalizeLooseBlankDivs(template.content);
+    const topBlockCount = Array.from(template.content.childNodes).filter(
+      (n) => n.nodeType === 1 || n.nodeType === 3 && n.data.trim()
+    ).length;
+    const hasBlankParagraph = topBlockCount > 1 || Array.from(template.content.querySelectorAll("p")).some(
+      (p) => !p.textContent.replace(/\u200b/g, "").length && p.querySelector("br") && !p.querySelector("img,[data-tex],[data-md-opaque]")
+    );
+    normalizeLooseBlankDivs(template.content, { convertEmptyParagraphs: hasBlankParagraph });
     const wrapper = ownerDocument.createElement("div");
     wrapper.appendChild(template.content.cloneNode(true));
     const parsed = parseWithInlineCodeSpaces(wrapper, DOMParser.fromSchema(schema2));
@@ -13720,7 +13727,7 @@
   function escapePlainSegment(segment, { atBlockStart: atBlockStart2 = false, tableCell = false } = {}) {
     let out = segment.replace(/\\/g, "\\\\").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\*/g, "\\*").replace(/_/g, "\\_").replace(/`/g, "\\`").replace(/\[/g, "\\[").replace(/\]/g, "\\]").replace(new RegExp("[$~]|(?<!\\\\)=(?==)|(?<==)=", "g"), "\\$&");
     if (atBlockStart2) {
-      out = out.replace(/^(#{1,6})(\s|$)/, "\\$1$2").replace(/^>/, "\\>").replace(/^(\s*[-+*])(\s|$)/, (_, m, ws) => m.replace(/([-+*])$/, "\\$1") + ws).replace(/^([ \t]*)(-)(?=(?:[ \t]*-)+[ \t]*$)/, "$1\\$2").replace(/^(\d+)([.)]) /, "$1\\$2 ");
+      out = out.replace(/^([ \t]{0,3})(#{1,6})(?=\s|$)/, "$1\\$2").replace(/^([ \t]{0,3})>/, "$1\\>").replace(/^([ \t]*[-+*])(\s|$)/, (_, m, ws) => m.replace(/([-+*])$/, "\\$1") + ws).replace(/^([ \t]{0,3})(-)(?=(?:[ \t]*[-:|])+[ \t]*$)/, "$1\\$2").replace(/^([ \t]{0,3})(-)(?=[ \t]*\|)/, "$1\\$2").replace(/^([ \t]{0,3})(=+)(?=[ \t]*$)/, "$1\\$2").replace(/^([ \t]{0,3})(\d{1,9})([.)])(?=\s|$)/, "$1$2\\$3").replace(/^(?: {4}| {0,3}\t)(?=\S)/, (m) => (m[0] === "	" ? "&#9;" : "&#32;") + m.slice(1));
     }
     if (tableCell) {
       out = out.replace(/\|/g, "\\|").replace(/ {2,}/g, (s) => "&#32;".repeat(s.length));
@@ -13838,6 +13845,7 @@
     let href = String(rawHref || "");
     if (!href) return "";
     if (tableCell) href = escapeTablePipes(href).replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+    href = href.replace(/&(?=[A-Za-z0-9#]+;)/g, "\\&");
     if (wrap2 || /[\s()<>[\]\u0000-\u001f]/.test(href)) {
       return `<${href.replace(/</g, "%3C").replace(/>/g, "%3E")}>`;
     }
@@ -13879,14 +13887,21 @@
           const nextActive = new Set(activeMarkKeys);
           nextActive.add(key);
           if (outer.type.name === "code") {
-            const parts = [];
+            let parts = [];
+            const flushCodeParts = () => {
+              if (!parts.length) return;
+              out += serializeCodeSpan(parts.join(""), { tableCell });
+              parts = [];
+            };
             for (const sn of subNodes) {
               if (sn.isText) parts.push(sn.text);
               else if (sn.type.name === "hard_break") parts.push("\n");
-              else if (sn.type.name === "image") parts.push(renderLeafInline(sn));
-              else if (sn.type.name === "math_inline" || sn.type.name === "opaque_inline") parts.push(renderLeafInline(sn));
+              else {
+                flushCodeParts();
+                out += renderLeafInline(sn, atBlockStart2 && i === 0 && !out || out.endsWith("\n"));
+              }
             }
-            out += serializeCodeSpan(parts.join(""), { tableCell });
+            flushCodeParts();
           } else {
             const inner = renderSlice(subNodes, nextActive, false);
             const prevNode = i > 0 ? nodes2[i - 1] : null;
@@ -14069,7 +14084,44 @@
     lines.splice(1, 0, `| ${sepCells.join(" | ")} |`);
     return lines.join("\n");
   }
-  function serializeBlockNode(node, { opaqueSources = {}, protect = null, insideContainer = false } = {}) {
+  function updateListState(state, node, verbatimSource = null) {
+    if (!state) return;
+    if (node?.type?.name === "ordered_list") {
+      state.kind = "ordered";
+      if (verbatimSource != null) {
+        const m = verbatimSource.match(/^\s*\d{1,9}([.)])/m);
+        if (m) state.orderedDelimiter = m[1];
+      }
+      return;
+    }
+    if (node?.type?.name === "bullet_list") {
+      state.kind = "bullet";
+      if (verbatimSource != null) {
+        const m = verbatimSource.match(/^\s*([-+*])(?:\s|$)/m);
+        if (m) state.bulletMarker = m[1];
+      }
+      return;
+    }
+    state.kind = null;
+  }
+  function chooseListFormatting(state, node) {
+    if (!state) return { orderedDelimiter: ".", bulletMarker: "-" };
+    if (node.type.name === "ordered_list") {
+      const orderedDelimiter = state.kind === "ordered" && state.orderedDelimiter === "." ? ")" : ".";
+      state.kind = "ordered";
+      state.orderedDelimiter = orderedDelimiter;
+      return { orderedDelimiter, bulletMarker: "-" };
+    }
+    if (node.type.name === "bullet_list") {
+      const bulletMarker = state.kind === "bullet" && state.bulletMarker === "-" ? "*" : "-";
+      state.kind = "bullet";
+      state.bulletMarker = bulletMarker;
+      return { orderedDelimiter: ".", bulletMarker };
+    }
+    state.kind = null;
+    return { orderedDelimiter: ".", bulletMarker: "-" };
+  }
+  function serializeBlockNode(node, { opaqueSources = {}, protect = null, insideContainer = false, orderedDelimiter = ".", bulletMarker = "-" } = {}) {
     switch (node.type.name) {
       case "blank_line":
         return node.content.size > 0 ? serializeInline(node.content, { opaqueSources, protect }) : "  ";
@@ -14088,9 +14140,11 @@
 ${blanks}` : blanks;
         }
         if (insideContainer) {
-          for (let k = 0; k < trailingBreaks; k++) {
-            items.push(node.type.schema.nodes.hard_break.create());
+          if (!items.length && trailingBreaks === 0) {
+            return insideContainer === "blockquote" || insideContainer === "list_item_multi" ? "  " : "";
           }
+          const mainText = items.length ? serializeInline({ forEach: (fn) => items.forEach((n, i) => fn(n, i)) }, { opaqueSources, protect }) : "";
+          return trailingBreaks > 0 ? `${mainText}${"<br>".repeat(trailingBreaks)}` : mainText;
         }
         return items.length ? serializeInline({ forEach: (fn) => items.forEach((n, i) => fn(n, i)) }, { opaqueSources, protect }) : "";
       }
@@ -14112,8 +14166,10 @@ ${fence}`;
       }
       case "blockquote": {
         const childStrings = [];
+        const childListState = { kind: null, orderedDelimiter: ".", bulletMarker: "-" };
         node.content.forEach((child) => {
-          childStrings.push(serializeBlockNode(child, { opaqueSources, protect, insideContainer: true }));
+          const listStyle = chooseListFormatting(childListState, child);
+          childStrings.push(serializeBlockNode(child, { opaqueSources, protect, insideContainer: "blockquote", ...listStyle }));
         });
         const joined = childStrings.join("\n\n");
         return joined.split("\n").map((line) => line ? `> ${line}` : ">").join("\n");
@@ -14132,12 +14188,19 @@ ${fence}`;
         });
         const renderedItems = [];
         node.content.forEach((item, _offset, index) => {
-          const marker = isOrdered ? `${start + index}. ` : "- ";
+          const marker = isOrdered ? `${start + index}${orderedDelimiter} ` : `${bulletMarker} `;
           const taskPrefix = item.attrs.task !== null ? item.attrs.task ? "[x] " : "[ ] " : "";
           const pad = " ".repeat(marker.length);
           const childParts = [];
+          const childListState = { kind: null, orderedDelimiter: ".", bulletMarker: "-" };
           item.content.forEach((child, _cOffset, cIdx) => {
-            const text = serializeBlockNode(child, { opaqueSources, protect, insideContainer: true });
+            const listStyle = chooseListFormatting(childListState, child);
+            const text = serializeBlockNode(child, {
+              opaqueSources,
+              protect,
+              insideContainer: item.childCount > 1 ? "list_item_multi" : "list_item",
+              ...listStyle
+            });
             const prefix = cIdx === 0 ? taskPrefix : "";
             const prefixed = prefix + text;
             const lines = prefixed.split("\n");
@@ -14189,8 +14252,9 @@ $$`;
     opaqueSources = {},
     lastInputType = ""
   } = {}) {
-    const emptyDocPlaceholder = doc3.childCount === 1 && doc3.firstChild.type.name === "paragraph" && doc3.firstChild.attrs.mdEmpty && doc3.firstChild.content.size === 0;
-    const deletedPlaceholder = !emptyDocPlaceholder && (doc3.firstChild.attrs.mdDeleted || String(lastInputType || "").startsWith("delete")) && doc3.childCount === 1 && doc3.firstChild.type.name === "paragraph" && doc3.firstChild.content.size === 0;
+    const isSingleEmptyParagraph = doc3.childCount === 1 && doc3.firstChild.type.name === "paragraph" && doc3.firstChild.content.size === 0;
+    const emptyDocPlaceholder = isSingleEmptyParagraph && !!doc3.firstChild.attrs.mdEmpty;
+    const deletedPlaceholder = isSingleEmptyParagraph && !doc3.firstChild.attrs.mdEmpty;
     let contextKey = doc3.attrs.sourceContext || "";
     if (!contextKey) {
       for (let i = 0; i < doc3.childCount; i++) {
@@ -14227,6 +14291,7 @@ $$`;
     }
     let output = "";
     let prevBlockWasVerbatim = true;
+    const listState = { kind: null, orderedDelimiter: ".", bulletMarker: "-" };
     function lineEndingCount(text) {
       let count = 0;
       for (let index = text.length - 1; index >= 0 && count < 2; index--) {
@@ -14239,20 +14304,36 @@ $$`;
     function separateBlocks(ending) {
       if (output) output += ending.repeat(Math.max(0, 2 - lineEndingCount(output)));
     }
-    function emitHiddenForBlock(fullId) {
-      if (emittedHidden.has(fullId)) return;
+    function emitHiddenForBlock(fullId, { allowLeadingWhitespace = false } = {}) {
+      if (!fullId || emittedHidden.has(fullId)) return;
       emittedHidden.add(fullId);
       for (const h of ctx.hiddenPrefixes?.get(fullId) || []) {
         emittedHidden.add("hidden:" + h.id);
-        if (!prevBlockWasVerbatim && !h.source.trim() && lineEndingCount(output) >= 2) {
-          continue;
+        if (!h.source.trim()) {
+          if (!output && !allowLeadingWhitespace) continue;
+          if (!prevBlockWasVerbatim && lineEndingCount(output) >= 2) continue;
+        } else {
+          listState.kind = null;
         }
         output += h.source;
       }
     }
+    function collectBlockOrigins(target, out = []) {
+      if (target.attrs?.mdBlockId != null) {
+        out.push(`${target.attrs.mdContext || ""}${target.attrs.mdBlockId}`);
+      }
+      target.content?.forEach((child) => {
+        if (child.isBlock) collectBlockOrigins(child, out);
+      });
+      return out;
+    }
     const docEnding = (ctx.blocks || []).some((b) => b.source?.includes("\r\n")) ? "\r\n" : (ctx.blocks || []).some((b) => b.source?.includes("\r")) ? "\r" : "\n";
     const firstVisible = ctx.blocks?.find((block) => !block.hidden);
-    if (firstVisible) emitHiddenForBlock(firstVisible.id);
+    if (firstVisible) {
+      const firstTop = topNodes[0];
+      const firstTopId = firstTop?.attrs?.mdBlockId != null ? `${firstTop.attrs.mdContext || ""}${firstTop.attrs.mdBlockId}` : null;
+      emitHiddenForBlock(firstVisible.id, { allowLeadingWhitespace: firstTopId === firstVisible.id });
+    }
     let idx = 0;
     while (idx < topNodes.length) {
       const node = topNodes[idx];
@@ -14274,17 +14355,20 @@ $$`;
             usedOrigins.add(fullId);
             emitHiddenForBlock(fullId);
             output += original.source;
+            updateListState(listState, group.at(-1), original.source);
             prevBlockWasVerbatim = true;
             idx += total;
             continue;
           }
         }
       }
-      if (fullId != null) {
-        usedOrigins.add(fullId);
-        emitHiddenForBlock(fullId);
+      for (const originId of collectBlockOrigins(node)) {
+        if (!usedOrigins.has(originId)) {
+          usedOrigins.add(originId);
+          emitHiddenForBlock(originId);
+        }
       }
-      const sourceEnding = original?.source?.includes("\r\n") ? "\r\n" : original?.source?.includes("\r") ? "\r" : docEnding;
+      const sourceEnding = original?.source?.includes("\r\n") ? "\r\n" : original?.source?.includes("\r") ? "\r" : original?.source?.includes("\n") ? "\n" : docEnding;
       const imgEnding = findImageEnding(node);
       const ending = imgEnding || sourceEnding;
       if (idx > 0) separateBlocks(ending);
@@ -14294,7 +14378,11 @@ $$`;
           (cand, k) => (cand.attrs?.mdContext || "") === mdCtx && cand.attrs?.mdBlockId === mdBlockId && Number(cand.attrs?.mdBlockSub || 0) === k && Number(cand.attrs?.mdBlockTotal || 1) === total
         );
         if (sameGroup) {
-          const rendered2 = group.map((n) => serializeBlockNode(n, { opaqueSources, protect: protector.protect })).join("\n\n");
+          const rendered2 = group.map((n) => {
+            if (n.type.name === "paragraph" && n.content.size === 0) return "  ";
+            const listStyle2 = chooseListFormatting(listState, n);
+            return serializeBlockNode(n, { opaqueSources, protect: protector.protect, ...listStyle2 });
+          }).join("\n\n");
           let text2 = ending !== "\n" ? rendered2.replace(/\r\n?|\n/g, ending) : rendered2;
           text2 = protector.restore(text2);
           const rawTail2 = original.source.match(/[\r\n]*$/)?.[0] ?? "";
@@ -14306,7 +14394,22 @@ $$`;
           continue;
         }
       }
-      const rendered = serializeBlockNode(node, { opaqueSources, protect: protector.protect });
+      const isEmptyOrWhitespaceOnlyParagraph = node.type.name === "blank_line" && !node.content.size || node.type.name === "paragraph" && (node.content.size === 0 || node.textContent.replace(/[ \t]/g, "").length === 0 && (() => {
+        let onlyPlainSpaces = true;
+        node.content.forEach((ch) => {
+          if (!ch.isText) onlyPlainSpaces = false;
+        });
+        return onlyPlainSpaces;
+      })());
+      if (isEmptyOrWhitespaceOnlyParagraph) {
+        listState.kind = null;
+        output += `  ${ending}${ending}`;
+        prevBlockWasVerbatim = false;
+        idx += 1;
+        continue;
+      }
+      const listStyle = chooseListFormatting(listState, node);
+      const rendered = serializeBlockNode(node, { opaqueSources, protect: protector.protect, ...listStyle });
       let text = ending !== "\n" ? rendered.replace(/\r\n?|\n/g, ending) : rendered;
       text = protector.restore(text);
       const hasNext = idx + 1 < topNodes.length;
@@ -14319,8 +14422,6 @@ $$`;
       } else if (isSplitSingleOrigin && !hasNext && original) {
         const tailSuffix = canonicalGroupStructure([node]) === original.structure ? rawTail : ending + ending;
         output += text + tailSuffix;
-      } else if (node.type.name === "blank_line" && !node.content.size) {
-        output += `  ${ending}${ending}`;
       } else {
         output += text ? `${text}${ending}${ending}` : ending;
       }
@@ -15396,7 +15497,7 @@ $$`;
     return names.map((name) => schema2.marks[name]).filter(Boolean);
   }
   function splitLeafByHardBreaksIfPartial(tr, schema2, node, pos, selFrom, selTo, level) {
-    if (!node.isTextblock) return false;
+    if (node.type !== schema2.nodes.paragraph && node.type !== schema2.nodes.blank_line) return null;
     const lines = [];
     let currentNodes = [];
     let lineStartOffset = 0;
@@ -15413,7 +15514,7 @@ $$`;
       }
     });
     lines.push({ nodes: currentNodes, start: lineStartOffset, end: cursorOffset });
-    if (lines.length <= 1) return false;
+    if (lines.length <= 1) return null;
     const contentStart = pos + 1;
     const lineMatches = (line) => {
       const absStart = contentStart + line.start;
@@ -15422,31 +15523,61 @@ $$`;
       return Math.max(absStart, selFrom) <= Math.min(absEnd, selTo) && !(selFrom === absEnd && selTo > absEnd) && !(selTo === absStart && selFrom < absStart);
     };
     const touched = lines.map(lineMatches);
-    if (touched.every(Boolean) || !touched.some(Boolean)) return false;
+    if (touched.every(Boolean) || !touched.some(Boolean)) return null;
     const replacementBlocks = [];
-    let firstTouched = true;
+    let usedOrigin = false;
+    let pendingParagraphNodes = [];
+    let headingRange = null;
+    let runningPos = pos;
+    const originAttrs = () => {
+      if (usedOrigin) return { mdContext: "", mdBlockId: null, mdBlockSub: 0, mdBlockTotal: 1 };
+      usedOrigin = true;
+      return {
+        mdContext: node.attrs.mdContext || "",
+        mdBlockId: node.attrs.mdBlockId || null,
+        mdBlockSub: node.attrs.mdBlockSub || 0,
+        mdBlockTotal: node.attrs.mdBlockTotal || 1
+      };
+    };
+    const flushParagraph = () => {
+      if (!pendingParagraphNodes.length) return;
+      const p = schema2.nodes.paragraph.create({ ...originAttrs(), mdEmpty: false }, Fragment.fromArray(pendingParagraphNodes));
+      replacementBlocks.push(p);
+      runningPos += p.nodeSize;
+      pendingParagraphNodes = [];
+    };
     lines.forEach((line, index) => {
       const content = Fragment.fromArray(line.nodes);
       if (touched[index]) {
-        replacementBlocks.push(schema2.nodes.heading.create({
+        flushParagraph();
+        const h = schema2.nodes.heading.create({
           level,
           outlineIgnore: false,
-          mdContext: firstTouched ? node.attrs.mdContext || "" : "",
-          mdBlockId: firstTouched ? node.attrs.mdBlockId || null : null,
-          mdBlockSub: node.attrs.mdBlockSub || 0,
-          mdBlockTotal: node.attrs.mdBlockTotal || 1
-        }, content));
-        firstTouched = false;
-      } else if (content.size > 0 || replacementBlocks.length > 0) {
-        replacementBlocks.push(schema2.nodes.paragraph.create({ mdEmpty: false }, content));
+          ...originAttrs()
+        }, content);
+        if (!headingRange) headingRange = { from: runningPos + 1, to: runningPos + 1 + h.content.size };
+        else headingRange.to = runningPos + 1 + h.content.size;
+        replacementBlocks.push(h);
+        runningPos += h.nodeSize;
+      } else if (content.size === 0) {
+        flushParagraph();
+        const b = schema2.nodes.blank_line.create();
+        replacementBlocks.push(b);
+        runningPos += b.nodeSize;
+      } else {
+        if (pendingParagraphNodes.length) {
+          pendingParagraphNodes.push(schema2.nodes.hard_break.create());
+        }
+        line.nodes.forEach((n) => pendingParagraphNodes.push(n));
       }
     });
-    if (!replacementBlocks.length) return false;
+    flushParagraph();
+    if (!replacementBlocks.length) return null;
     tr.replaceWith(pos, pos + node.nodeSize, replacementBlocks);
-    return true;
+    return headingRange || { from: pos + 1, to: pos + 1 };
   }
   function liftSelectedListItemsWithOrder(state, schema2) {
-    const { $from, $to } = state.selection;
+    const { $from, $to, empty: empty2, from: from2, to } = state.selection;
     const listAncestor = findNearestListAncestor($from, schema2);
     if (!listAncestor || $to.depth < listAncestor.depth || $to.before(listAncestor.depth) !== listAncestor.pos) return null;
     const { node: listNode, pos: listPos } = listAncestor;
@@ -15454,7 +15585,7 @@ $$`;
     const baseOrder = isOrdered ? Math.max(0, Number(listNode.attrs.order ?? 1)) : 1;
     const firstIdx = $from.index(listAncestor.depth);
     const lastIdx = $to.index(listAncestor.depth);
-    if (listNode.childCount === 1 || lastIdx === listNode.childCount - 1) {
+    if (firstIdx === lastIdx && (listNode.childCount === 1 || lastIdx === listNode.childCount - 1)) {
       let liftTr = null;
       if (liftListItem(schema2.nodes.list_item)(state, (t) => {
         liftTr = t;
@@ -15466,6 +15597,23 @@ $$`;
     const beforeItems = [];
     const liftedBlocks = [];
     const afterItems = [];
+    const itemRelFrom = (() => {
+      let itemStart = listPos + 1;
+      for (let i = 0; i < firstIdx; i++) itemStart += listNode.child(i).nodeSize;
+      return Math.max(0, from2 - (itemStart + 1));
+    })();
+    const itemRelEndFromEnd = (() => {
+      let itemStart = listPos + 1;
+      for (let i = 0; i <= lastIdx; i++) {
+        const sz = listNode.child(i).nodeSize;
+        if (i === lastIdx) {
+          const contentEnd = itemStart + sz - 1;
+          return Math.max(0, contentEnd - to);
+        }
+        itemStart += sz;
+      }
+      return 0;
+    })();
     for (let i = 0; i < listNode.childCount; i++) {
       const item = listNode.child(i);
       if (i < firstIdx) {
@@ -15492,9 +15640,21 @@ $$`;
       replacements.push(listNode.type.create(afterAttrs, afterItems));
     }
     const tr = state.tr.replaceWith(listPos, listPos + listNode.nodeSize, replacements);
-    let caretPos = listPos;
-    if (beforeItems.length) caretPos += replacements[0].nodeSize;
-    tr.setSelection(TextSelection.near(tr.doc.resolve(caretPos + 1)));
+    let liftedStart = listPos;
+    if (beforeItems.length) liftedStart += replacements[0].nodeSize;
+    const liftedSize = liftedBlocks.reduce((sum, b) => sum + b.nodeSize, 0);
+    const liftedEnd = liftedStart + liftedSize;
+    if (empty2) {
+      const targetPos = Math.min(liftedEnd, liftedStart + itemRelFrom);
+      tr.setSelection(TextSelection.near(tr.doc.resolve(targetPos)));
+    } else {
+      const selStart = Math.min(liftedEnd, liftedStart + itemRelFrom);
+      const selEnd = Math.max(selStart, liftedEnd - itemRelEndFromEnd);
+      tr.setSelection(TextSelection.between(
+        tr.doc.resolve(selStart),
+        tr.doc.resolve(selEnd)
+      ));
+    }
     return tr;
   }
   function convertCodeLineBreaks(tr, node, pos, schema2) {
@@ -15528,21 +15688,68 @@ $$`;
       }
       return { handled: true, changed: anyMark };
     }
+    function findAnyListItemInSelection(selState) {
+      const { from: sFrom, to: sTo, $from: s$From, $to: s$To } = selState.selection;
+      const ancFrom = findAncestorOfType(s$From, schema2.nodes.list_item);
+      if (ancFrom) {
+        const listAnc = findNearestListAncestor(s$From, schema2);
+        if (listAnc) {
+          const listEnd = listAnc.pos + listAnc.node.nodeSize - 1;
+          return {
+            listPos: listAnc.pos,
+            listEnd: listAnc.pos + listAnc.node.nodeSize,
+            itemFrom: sFrom,
+            itemTo: Math.min(sTo, listEnd),
+            containsStart: true,
+            containsEnd: sTo <= listEnd + 1
+          };
+        }
+      }
+      let found2 = null;
+      selState.doc.nodesBetween(sFrom, sTo, (node, pos) => {
+        if (found2) return false;
+        if (node.type === schema2.nodes.bullet_list || node.type === schema2.nodes.ordered_list) {
+          found2 = {
+            listPos: pos,
+            listEnd: pos + node.nodeSize,
+            itemFrom: Math.max(sFrom, pos + 2),
+            itemTo: Math.min(sTo, pos + node.nodeSize - 2),
+            containsStart: sFrom >= pos,
+            containsEnd: sTo <= pos + node.nodeSize
+          };
+          return false;
+        }
+        return true;
+      });
+      return found2;
+    }
     const steps = [];
     let workState = state;
-    if (findAncestorOfType(workState.selection.$from, schema2.nodes.list_item)) {
-      let safety = 0;
-      while (findAncestorOfType(workState.selection.$from, schema2.nodes.list_item) && safety < 16) {
-        safety++;
-        const liftTr = liftSelectedListItemsWithOrder(workState, schema2);
-        if (!liftTr) break;
-        steps.push(liftTr);
-        workState = workState.apply(liftTr);
-      }
+    let liftSafety = 0;
+    while (liftSafety < 32) {
+      const targetList = findAnyListItemInSelection(workState);
+      if (!targetList) break;
+      liftSafety++;
+      const origSel = workState.selection;
+      const subSelState = workState.apply(
+        workState.tr.setSelection(TextSelection.between(
+          workState.doc.resolve(targetList.itemFrom),
+          workState.doc.resolve(Math.max(targetList.itemFrom, targetList.itemTo))
+        ))
+      );
+      const liftTr = liftSelectedListItemsWithOrder(subSelState, schema2);
+      if (!liftTr) break;
+      const nextFrom = targetList.containsStart ? liftTr.selection.from : Math.max(0, liftTr.mapping.map(origSel.from, -1));
+      const nextTo = targetList.containsEnd ? liftTr.selection.to : Math.min(liftTr.doc.content.size, liftTr.mapping.map(origSel.to, 1));
+      liftTr.setSelection(
+        origSel.empty ? TextSelection.near(liftTr.doc.resolve(nextFrom)) : TextSelection.between(liftTr.doc.resolve(nextFrom), liftTr.doc.resolve(Math.max(nextFrom, nextTo)))
+      );
+      steps.push(liftTr);
+      workState = workState.apply(liftTr);
     }
     if (level === null) {
       let safety = 0;
-      while (findAncestorOfType(workState.selection.$from, schema2.nodes.blockquote) && safety < 16) {
+      while ((findAncestorOfType(workState.selection.$from, schema2.nodes.blockquote) || findAncestorOfType(workState.selection.$to, schema2.nodes.blockquote)) && safety < 16) {
         safety++;
         let bqTr = null;
         if (!lift2(workState, (t) => {
@@ -15577,10 +15784,13 @@ $$`;
     }
     const editTr = workState.tr;
     let blockChanged = false;
+    let splitSelection = null;
     if (level != null) {
       for (let i = targets.length - 1; i >= 0; i--) {
         const { node, pos } = targets[i];
-        if (splitLeafByHardBreaksIfPartial(editTr, schema2, node, pos, from2, to, level)) {
+        const splitRange = splitLeafByHardBreaksIfPartial(editTr, schema2, node, pos, from2, to, level);
+        if (splitRange) {
+          splitSelection = splitRange;
           blockChanged = true;
           continue;
         }
@@ -15597,6 +15807,11 @@ $$`;
         }, node.marks);
         convertCodeLineBreaks(editTr, node, pos, schema2);
         blockChanged = true;
+      }
+      if (splitSelection) {
+        editTr.setSelection(
+          from2 === to ? TextSelection.near(editTr.doc.resolve(splitSelection.from)) : TextSelection.between(editTr.doc.resolve(splitSelection.from), editTr.doc.resolve(splitSelection.to))
+        );
       }
     } else {
       const marksToRemove = inlineMarkTypesToStrip(schema2);
@@ -15638,7 +15853,7 @@ $$`;
       for (const s of t.steps) combined.step(s);
     }
     const last = transactions.at(-1);
-    if (last?.selectionSet) {
+    if (last?.selection && transactions.some((t) => t.selectionSet)) {
       combined.setSelection(Selection.fromJSON(combined.doc, last.selection.toJSON()));
     }
     dispatch(combined.scrollIntoView());
@@ -15646,51 +15861,106 @@ $$`;
   function toggleListMode(state, dispatch, schema2, mode) {
     const { $from, $to, from: from2, to } = state.selection;
     const fromList = findNearestListAncestor($from, schema2);
-    const outerList = (() => {
-      for (let d = 1; d <= $from.depth; d++) {
-        const n = $from.node(d);
-        if (n.type === schema2.nodes.bullet_list || n.type === schema2.nodes.ordered_list) {
-          return { node: n, pos: $from.before(d) };
-        }
-      }
-      return null;
-    })();
-    const spansMultipleLists = from2 < to && (!outerList || from2 < outerList.pos || to > outerList.pos + outerList.node.nodeSize);
-    if (spansMultipleLists && mode === "task") {
-      const itemTargets = [];
-      const listContainersToConvert = [];
-      state.doc.nodesBetween(from2, to, (node, pos) => {
-        if (node.type === schema2.nodes.ordered_list) {
-          listContainersToConvert.push({ node, pos });
-        }
-        if (node.type === schema2.nodes.list_item) {
-          itemTargets.push({ node, pos });
+    const spansOutsideSingleList = from2 < to && (!fromList || $to.depth < fromList.depth || $to.before(fromList.depth) !== fromList.pos);
+    let touchesListInMixedRange = false;
+    if (spansOutsideSingleList) {
+      state.doc.nodesBetween(from2, to, (node) => {
+        if (node.type === schema2.nodes.bullet_list || node.type === schema2.nodes.ordered_list) {
+          touchesListInMixedRange = true;
+          return false;
         }
         return true;
       });
-      if (itemTargets.length > 0) {
-        const allAlreadyTask = itemTargets.every((it) => it.node.attrs.task !== null) && !listContainersToConvert.length;
-        if (!allAlreadyTask) {
-          if (!dispatch) return true;
-          const tr = state.tr;
-          for (const { node, pos } of listContainersToConvert) {
-            tr.setNodeMarkup(pos, schema2.nodes.bullet_list, {
-              mdContext: node.attrs.mdContext || "",
-              mdBlockId: node.attrs.mdBlockId || null,
-              mdBlockSub: node.attrs.mdBlockSub || 0,
-              mdBlockTotal: node.attrs.mdBlockTotal || 1,
-              tight: node.attrs.tight !== false
-            });
-          }
-          for (const { node, pos } of itemTargets) {
-            if (node.attrs.task === null) {
-              tr.setNodeMarkup(pos, null, { ...node.attrs, task: false });
-            }
-          }
-          dispatch(tr.scrollIntoView());
+    }
+    if (spansOutsideSingleList && mode === "task" && !touchesListInMixedRange) {
+    } else if (spansOutsideSingleList && touchesListInMixedRange) {
+      if (mode === "task") {
+        const itemTargets = [];
+        const listContainersToConvert = [];
+        state.doc.nodesBetween(from2, to, (node, pos) => {
+          if (node.type === schema2.nodes.ordered_list) listContainersToConvert.push({ node, pos });
+          if (node.type === schema2.nodes.list_item) itemTargets.push({ node, pos });
           return true;
+        });
+        if (itemTargets.length > 0) {
+          const allAlreadyTask = itemTargets.every((it) => it.node.attrs.task !== null) && !listContainersToConvert.length;
+          if (!allAlreadyTask) {
+            if (!dispatch) return true;
+            const tr = state.tr;
+            for (const { node, pos } of listContainersToConvert) {
+              tr.setNodeMarkup(pos, schema2.nodes.bullet_list, {
+                mdContext: node.attrs.mdContext || "",
+                mdBlockId: node.attrs.mdBlockId || null,
+                mdBlockSub: node.attrs.mdBlockSub || 0,
+                mdBlockTotal: node.attrs.mdBlockTotal || 1,
+                tight: node.attrs.tight !== false
+              });
+            }
+            for (const { node, pos } of itemTargets) {
+              if (node.attrs.task === null) tr.setNodeMarkup(pos, null, { ...node.attrs, task: false });
+            }
+            dispatch(tr.scrollIntoView());
+            return true;
+          }
+          const liftAll = applyHeadingOrParagraph(state, dispatch, schema2, { level: null });
+          return liftAll.handled;
         }
       }
+      if (!dispatch) return true;
+      const mixedRes = applyHeadingOrParagraph(state, null, schema2, { level: null });
+      let workState = state;
+      const mixedSteps = [];
+      if (mixedRes.handled) {
+        let appliedTr = null;
+        applyHeadingOrParagraph(state, (tr) => {
+          appliedTr = tr;
+        }, schema2, { level: null });
+        if (appliedTr) {
+          mixedSteps.push(appliedTr);
+          workState = state.apply(appliedTr);
+        }
+      }
+      const listType2 = mode === "ordered" ? schema2.nodes.ordered_list : schema2.nodes.bullet_list;
+      const { $from: wFrom, $to: wTo } = workState.selection;
+      const wRange = wFrom.blockRange(wTo);
+      if (!wRange) return false;
+      const prepTr2 = workState.tr;
+      let convertedBlank2 = false;
+      workState.doc.nodesBetween(wRange.start, wRange.end, (node, pos) => {
+        if (node.type === schema2.nodes.blank_line) {
+          prepTr2.setNodeMarkup(pos, schema2.nodes.paragraph, {
+            mdContext: node.attrs.mdContext || "",
+            mdBlockId: node.attrs.mdBlockId || null,
+            mdBlockSub: node.attrs.mdBlockSub || 0,
+            mdBlockTotal: node.attrs.mdBlockTotal || 1,
+            mdEmpty: false
+          });
+          convertedBlank2 = true;
+          return false;
+        }
+        return true;
+      });
+      if (convertedBlank2) {
+        mixedSteps.push(prepTr2);
+        workState = workState.apply(prepTr2);
+      }
+      let wrapped = false;
+      wrapInList(listType2, { tight: true })(workState, (tr2) => {
+        if (mode === "task") {
+          const markFrom = Math.min(tr2.selection.from, tr2.doc.content.size);
+          const markTo = Math.min(tr2.selection.to, tr2.doc.content.size);
+          tr2.doc.nodesBetween(markFrom, markTo, (node, pos) => {
+            if (node.type === schema2.nodes.list_item && node.attrs.task === null) {
+              tr2.setNodeMarkup(pos, null, { ...node.attrs, task: false });
+            }
+            return true;
+          });
+        }
+        mixedSteps.push(tr2);
+        dispatchMerged(state, mixedSteps, dispatch);
+        wrapped = true;
+      });
+      return wrapped;
     }
     if (fromList) {
       const parentList = fromList.node;
@@ -15858,44 +16128,62 @@ $$`;
       return true;
     }
     const inList = !!findAncestorOfType($from, schema2.nodes.list_item);
-    if (!ctx.inTable && !inList && $from.parent.type === schema2.nodes.paragraph && $from.nodeBefore?.type === schema2.nodes.hard_break) {
-      let poppedBreaks = 0;
-      let scanPos = $from.pos;
-      while (scanPos > $from.start() && workState.doc.resolve(scanPos).nodeBefore?.type === schema2.nodes.hard_break) {
-        poppedBreaks++;
-        scanPos -= workState.doc.resolve(scanPos).nodeBefore.nodeSize;
-      }
-      if (poppedBreaks >= 1) {
+    if (!ctx.inTable && !inList && $from.parent.type === schema2.nodes.paragraph) {
+      if ($from.parentOffset === 0 && $from.depth === 1 && $from.parent.content.size > 0 && $from.nodeAfter?.type !== schema2.nodes.hard_break) {
         if (!dispatch) return true;
-        const splitTr = workState.tr;
-        const parent = $from.parent;
-        const blockStart = $from.start();
-        const blockEnd = $from.end();
-        const beforeSlice = scanPos > blockStart ? workState.doc.slice(blockStart, scanPos).content : Fragment.empty;
-        const afterSlice = $from.pos < blockEnd ? workState.doc.slice($from.pos, blockEnd).content : Fragment.empty;
-        const blocks = [];
-        if (beforeSlice.size > 0) {
-          blocks.push(schema2.nodes.paragraph.create({
-            mdContext: parent.attrs.mdContext || "",
-            mdBlockId: parent.attrs.mdBlockId || null,
-            mdBlockSub: parent.attrs.mdBlockSub || 0,
-            mdBlockTotal: parent.attrs.mdBlockTotal || 1,
-            mdEmpty: false
-          }, beforeSlice));
-        }
-        for (let b = 0; b < (afterSlice.size > 0 ? poppedBreaks : poppedBreaks + 1); b++) {
-          blocks.push(schema2.nodes.blank_line.create());
-        }
-        if (afterSlice.size > 0) {
-          blocks.push(schema2.nodes.paragraph.create({ mdEmpty: false }, afterSlice));
-        }
-        splitTr.replaceWith($from.before(), $from.after(), blocks);
-        let tailOffset = $from.before();
-        for (let b = 0; b < blocks.length - 1; b++) tailOffset += blocks[b].nodeSize;
-        splitTr.setSelection(TextSelection.near(splitTr.doc.resolve(tailOffset + 1)));
+        const splitTr = workState.tr.insert($from.before(), schema2.nodes.blank_line.create());
+        splitTr.setSelection(TextSelection.near(splitTr.doc.resolve($from.pos + 2)));
         if (prepTr.steps.length) dispatchMerged(state, [prepTr, splitTr], dispatch);
         else dispatch(splitTr.scrollIntoView());
         return true;
+      }
+      if ($from.nodeBefore?.type === schema2.nodes.hard_break || $from.nodeAfter?.type === schema2.nodes.hard_break) {
+        let beforeBreaks = 0;
+        let scanStart = $from.pos;
+        while (scanStart > $from.start() && workState.doc.resolve(scanStart).nodeBefore?.type === schema2.nodes.hard_break) {
+          beforeBreaks++;
+          scanStart -= workState.doc.resolve(scanStart).nodeBefore.nodeSize;
+        }
+        let afterBreaks = 0;
+        let scanEnd = $from.pos;
+        while (scanEnd < $from.end() && workState.doc.resolve(scanEnd).nodeAfter?.type === schema2.nodes.hard_break) {
+          afterBreaks++;
+          scanEnd += workState.doc.resolve(scanEnd).nodeAfter.nodeSize;
+        }
+        const totalBreaks = beforeBreaks + afterBreaks;
+        if (totalBreaks >= 1) {
+          if (!dispatch) return true;
+          const splitTr = workState.tr;
+          const parent = $from.parent;
+          const blockStart = $from.start();
+          const blockEnd = $from.end();
+          const beforeSlice = scanStart > blockStart ? workState.doc.slice(blockStart, scanStart).content : Fragment.empty;
+          const afterSlice = scanEnd < blockEnd ? workState.doc.slice(scanEnd, blockEnd).content : Fragment.empty;
+          const blocks = [];
+          if (beforeSlice.size > 0) {
+            blocks.push(schema2.nodes.paragraph.create({
+              mdContext: parent.attrs.mdContext || "",
+              mdBlockId: parent.attrs.mdBlockId || null,
+              mdBlockSub: parent.attrs.mdBlockSub || 0,
+              mdBlockTotal: parent.attrs.mdBlockTotal || 1,
+              mdEmpty: false
+            }, beforeSlice));
+          }
+          const blankCount = afterSlice.size > 0 ? totalBreaks : totalBreaks + 1;
+          for (let b = 0; b < blankCount; b++) {
+            blocks.push(schema2.nodes.blank_line.create());
+          }
+          if (afterSlice.size > 0) {
+            blocks.push(schema2.nodes.paragraph.create({ mdEmpty: false }, afterSlice));
+          }
+          splitTr.replaceWith($from.before(), $from.after(), blocks);
+          let tailOffset = $from.before();
+          for (let b = 0; b < blocks.length - 1; b++) tailOffset += blocks[b].nodeSize;
+          splitTr.setSelection(TextSelection.near(splitTr.doc.resolve(tailOffset + 1)));
+          if (prepTr.steps.length) dispatchMerged(state, [prepTr, splitTr], dispatch);
+          else dispatch(splitTr.scrollIntoView());
+          return true;
+        }
       }
     }
     if (!dispatch) return true;
@@ -15956,6 +16244,15 @@ $$`;
           const pos = $from.before();
           const tr = state.tr.insert($from.after(), schema2.nodes.blank_line.create());
           tr.setSelection(TextSelection.near(tr.doc.resolve(pos + parent.nodeSize + 1)));
+          dispatch(tr.scrollIntoView());
+          return true;
+        }
+        if (parent.type === schema2.nodes.paragraph && parent.content.size > 0 && $from.parentOffset === 0 && $from.depth === 1) {
+          if (!dispatch) return true;
+          const pos = $from.before();
+          const blank = schema2.nodes.blank_line.create();
+          const tr = state.tr.insert(pos, blank);
+          tr.setSelection(TextSelection.near(tr.doc.resolve(pos + blank.nodeSize + 1)));
           dispatch(tr.scrollIntoView());
           return true;
         }
@@ -16228,9 +16525,25 @@ $$`;
       case "taskList":
         handled = toggleListMode(state, dispatch, schema2, "task");
         break;
-      case "quote":
-        handled = unwrapBlockquote(state, dispatch, schema2) || wrapIn(schema2.nodes.blockquote)(state, dispatch);
+      case "quote": {
+        if (unwrapBlockquote(state, dispatch, schema2)) {
+          handled = true;
+          break;
+        }
+        const { $from, $to } = state.selection;
+        const listAnc = findNearestListAncestor($from, schema2);
+        if (listAnc && $to.depth >= listAnc.depth && $to.before(listAnc.depth) === listAnc.pos) {
+          const range = state.doc.resolve(listAnc.pos).blockRange(state.doc.resolve(listAnc.pos + listAnc.node.nodeSize));
+          const wrapping = range && findWrapping(range, schema2.nodes.blockquote);
+          if (wrapping) {
+            dispatch(state.tr.wrap(range, wrapping).scrollIntoView());
+            handled = true;
+            break;
+          }
+        }
+        handled = wrapIn(schema2.nodes.blockquote)(state, dispatch);
         break;
+      }
       case "hardBreak":
         handled = insertHardBreakCommand(state, dispatch, schema2);
         break;
@@ -16267,9 +16580,43 @@ $$`;
       case "italic":
         handled = toggleMark(schema2.marks.em)(state, dispatch);
         break;
-      case "code":
-        handled = toggleMark(schema2.marks.code)(state, dispatch);
+      case "code": {
+        const codeMark = schema2.marks.code;
+        if (state.selection.empty) {
+          handled = toggleMark(codeMark)(state, dispatch);
+        } else {
+          const { from: from2, to } = state.selection;
+          let hasText = false;
+          let hasActiveCode = false;
+          state.doc.nodesBetween(from2, to, (node) => {
+            if (node.isText) {
+              hasText = true;
+              if (codeMark.isInSet(node.marks)) hasActiveCode = true;
+            }
+            return true;
+          });
+          if (!hasText) {
+            return { executed: false, changed: false, reason: "protected" };
+          }
+          const tr = state.tr;
+          if (hasActiveCode) {
+            tr.removeMark(from2, to, codeMark);
+          } else {
+            state.doc.nodesBetween(from2, to, (node, pos) => {
+              if (!node.isText) return true;
+              const segFrom = Math.max(from2, pos);
+              const segTo = Math.min(to, pos + node.nodeSize);
+              if (segFrom < segTo) tr.addMark(segFrom, segTo, codeMark.create());
+              return true;
+            });
+          }
+          if (tr.docChanged) {
+            dispatch(tr.scrollIntoView());
+            handled = true;
+          }
+        }
         break;
+      }
       case "highlight":
         handled = toggleMark(schema2.marks.highlight)(state, dispatch);
         break;
@@ -16422,12 +16769,11 @@ $$`;
     }
     return node;
   }
-  function deletedDocumentPlaceholder(container, inputType) {
-    if (!String(inputType || "").startsWith("delete")) return null;
+  function deletedDocumentPlaceholder(container, _inputType) {
     const visible = Array.from(container.children).filter(
       (n) => !n.hasAttribute("data-md-edit-boundary") && !n.classList.contains("ProseMirror-separator")
     );
-    return visible.length === 1 && !visible[0].textContent.length && !Array.from(container.childNodes).some((n) => n.nodeType === 3 && n.data.trim()) && visible[0].querySelectorAll("br").length <= 1 && !visible[0].querySelector("img:not(.ProseMirror-separator),input,hr,table,pre,code,[data-md-opaque],[data-tex]") ? visible[0] : null;
+    return visible.length === 1 && visible[0].tagName === "P" && !visible[0].textContent.replace(/\u200b/g, "").length && !Array.from(container.childNodes).some((n) => n.nodeType === 3 && n.data.trim()) && visible[0].querySelectorAll("br").length <= 1 && !visible[0].querySelector("img:not(.ProseMirror-separator),input,hr,table,pre,code,[data-md-opaque],[data-tex]") ? visible[0] : null;
   }
   function saveAppearance(container, inputType = "") {
     const placeholder = emptyPMOrDOMPlaceholder(container) || deletedDocumentPlaceholder(container, inputType);
@@ -16440,6 +16786,9 @@ $$`;
     const formats = [];
     const breaks = [];
     const blockTypes = [];
+    const links = [];
+    const tasks = [];
+    const listStarts = [];
     function recordBreaks(count) {
       if (!count) return;
       if (breaks.at(-1)?.[0] === text.length) breaks.at(-1)[1] += count;
@@ -16494,7 +16843,17 @@ $$`;
       }
       const tag = node.tagName;
       const isBlock = blockSet.test(tag);
-      if (tag === "INPUT" && node.type === "checkbox") return;
+      if (tag === "INPUT" && node.type === "checkbox") {
+        tasks.push(!!(node.checked || node.hasAttribute("checked")));
+        return;
+      }
+      if (tag === "OL") {
+        const startAttr = node.getAttribute("start")?.trim();
+        listStarts.push(startAttr && /^[+-]?\d+$/.test(startAttr) ? Number(startAttr) : 1);
+      }
+      if (tag === "A" && node.hasAttribute("href")) {
+        links.push(node.getAttribute("href") || "");
+      }
       if (node.classList?.contains("fastra-pm-li-content") || tag === "DIV" && node.classList?.contains("ProseMirror")) {
         for (const child of node.childNodes) visit(child, style, tableCell);
         return;
@@ -16522,8 +16881,14 @@ $$`;
         boundary();
         const semantic = semanticBlockTag(tag);
         const liParent = tag === "P" ? node.closest?.("li") : null;
-        const emptyPlaceholderParagraph = tag === "P" && !node.textContent.replace(/\u200b/g, "").length && !node.querySelector("img:not(.ProseMirror-separator),[data-tex],[data-md-opaque],hr,table,pre,input");
-        if (semantic && !liParent && !emptyPlaceholderParagraph && !(tag === "DIV" && (node.classList.contains("fastra-visible-blank-line") || node.hasAttribute("data-md-block")))) {
+        const cellParent = tag === "P" ? node.closest?.("td,th") : null;
+        const emptyTopParagraph = tag === "P" && !liParent && !cellParent && !node.textContent.replace(/[\u200b \t\r\n\f]/g, "").length && !node.querySelector("img:not(.ProseMirror-separator),[data-tex],[data-md-opaque],hr,table,pre,input,br:not(.ProseMirror-trailingBreak)");
+        if (emptyTopParagraph) {
+          recordBreaks(1);
+          boundary();
+          return;
+        }
+        if (semantic && !liParent && !(tag === "DIV" && (node.classList.contains("fastra-visible-blank-line") || node.hasAttribute("data-md-block")))) {
           blockTypes.push(semantic);
         }
       }
@@ -16554,7 +16919,7 @@ $$`;
     }
     for (const node of container.childNodes) visit(node, 0, false);
     boundary();
-    return { text, formats, breaks, blockTypes };
+    return { text, formats, breaks, blockTypes, links, tasks, listStarts };
   }
   function diffAppearance(live, saved, { includeContent = true } = {}) {
     if (live.text !== saved.text) {
@@ -16591,6 +16956,38 @@ $$`;
           savedBlockCount: saved.blockTypes.length,
           liveBlocks: live.blockTypes.slice(0, 24),
           savedBlocks: saved.blockTypes.slice(0, 24)
+        }
+      };
+    }
+    if (JSON.stringify(live.links || []) !== JSON.stringify(saved.links || [])) {
+      return {
+        outcome: "format",
+        diff: {
+          kind: "links",
+          liveCount: (live.links || []).length,
+          savedCount: (saved.links || []).length
+        }
+      };
+    }
+    if (JSON.stringify(live.tasks || []) !== JSON.stringify(saved.tasks || [])) {
+      return {
+        outcome: "format",
+        diff: {
+          kind: "tasks",
+          liveCount: (live.tasks || []).length,
+          savedCount: (saved.tasks || []).length,
+          liveTasks: (live.tasks || []).slice(0, 24),
+          savedTasks: (saved.tasks || []).slice(0, 24)
+        }
+      };
+    }
+    if (JSON.stringify(live.listStarts || []) !== JSON.stringify(saved.listStarts || [])) {
+      return {
+        outcome: "format",
+        diff: {
+          kind: "listStarts",
+          liveStarts: (live.listStarts || []).slice(0, 24),
+          savedStarts: (saved.listStarts || []).slice(0, 24)
         }
       };
     }
@@ -16640,7 +17037,7 @@ $$`;
       if (!container) return 0;
       const clone = container.cloneNode(true);
       clone.querySelectorAll("[data-md-edit-boundary]").forEach((n) => n.remove());
-      return (clone.textContent || "").replace(/[\u200b\u2060]/g, "").length;
+      return (clone.textContent || "").replace(/[\u200b\u2060\r\n]/g, "").length;
     }
     function selectionSummary(view) {
       if (!view) return null;
@@ -17395,6 +17792,8 @@ $$`;
     let session = "";
     let base2 = "";
     let revision = 0;
+    let docMutationVersion = 0;
+    let publishedMutationVersion = 0;
     let composing = false;
     let notifyCompositionEnd = false;
     let fenced = false;
@@ -17534,6 +17933,14 @@ $$`;
       } catch (_) {
       }
     }
+    function resumeDomObserverIfPaused() {
+      if (!domObserverPausedForOversizedTable) return;
+      try {
+        view?.domObserver?.start?.();
+      } catch (_) {
+      }
+      domObserverPausedForOversizedTable = false;
+    }
     function captureDOMSelectionSnapshot() {
       if (!root) return null;
       const winSel = document.getSelection?.();
@@ -17553,18 +17960,19 @@ $$`;
       };
     }
     function syncDOMSelectionToProseMirror(snapshot = null) {
-      if (!view || !root) return;
+      if (!view || !root) return false;
       const active = snapshot && root.contains(snapshot.startContainer) && root.contains(snapshot.endContainer) ? snapshot : captureDOMSelectionSnapshot();
-      if (!active) return;
-      if (view.state.selection instanceof NodeSelection && active.collapsed) return;
+      if (!active) return false;
+      if ((view.state.selection instanceof NodeSelection || view.state.selection instanceof GapCursor) && active.collapsed) return false;
       try {
         const doc3 = view.state.doc;
         if (active.startContainer === root && active.startOffset === 0 && active.endContainer === root && active.endOffset === root.childNodes.length && !active.collapsed) {
           const allSel = new AllSelection(doc3);
           if (!(view.state.selection instanceof AllSelection)) {
             view.dispatch(view.state.tr.setSelection(allSel).setMeta("addToHistory", false).setMeta("fastraAllowFenced", true));
+            return true;
           }
-          return;
+          return false;
         }
         if (active.startContainer === active.endContainer && active.endOffset === active.startOffset + 1 && active.startContainer.nodeType === 1) {
           const selectedNode = active.startContainer.childNodes[active.startOffset];
@@ -17586,8 +17994,9 @@ $$`;
                 const nodeSel = NodeSelection.create(doc3, pos);
                 if (!(view.state.selection instanceof NodeSelection) || view.state.selection.from !== nodeSel.from) {
                   view.dispatch(view.state.tr.setSelection(nodeSel).setMeta("addToHistory", false).setMeta("fastraAllowFenced", true));
+                  return true;
                 }
-                return;
+                return false;
               }
             }
           }
@@ -17611,7 +18020,16 @@ $$`;
                 if (!child) break;
                 targetNode = child;
               }
-              const innerPos = targetNode.nodeType === 3 ? view.posAtDOM(targetNode, targetNode.data.length) : view.posAtDOM(targetNode, targetNode.childNodes?.length || 0);
+              let innerPos;
+              if (targetNode.nodeType === 3) {
+                innerPos = view.posAtDOM(targetNode, targetNode.data.length);
+              } else if (/^(BR|IMG|HR|INPUT|WBR)$/.test(targetNode.tagName) || targetNode.hasAttribute?.("data-tex") || targetNode.hasAttribute?.("data-md-opaque")) {
+                const parent = targetNode.parentNode;
+                const childIdx = parent ? Array.prototype.indexOf.call(parent.childNodes, targetNode) : -1;
+                innerPos = parent && childIdx >= 0 ? view.posAtDOM(parent, childIdx + 1) : view.posAtDOM(el, offset);
+              } else {
+                innerPos = view.posAtDOM(targetNode, targetNode.childNodes?.length || 0);
+              }
               nextSel = Selection.near(doc3.resolve(Math.max(0, Math.min(innerPos, doc3.content.size))), -1);
             }
           } else if (offset === 0) {
@@ -17624,9 +18042,11 @@ $$`;
         }
         if (view.state.selection.anchor !== nextSel.anchor || view.state.selection.head !== nextSel.head || view.state.selection instanceof NodeSelection || view.state.selection instanceof AllSelection) {
           view.dispatch(view.state.tr.setSelection(nextSel).setMeta("addToHistory", false).setMeta("fastraAllowFenced", true));
+          return true;
         }
       } catch (_) {
       }
+      return false;
     }
     function syncProseMirrorSelectionToDOM({ force = false } = {}) {
       if (!view || !root || !force && view.hasFocus?.()) return;
@@ -17656,7 +18076,7 @@ $$`;
     function syncFromDOM() {
       const snap = captureDOMSelectionSnapshot();
       flushDOMObserver();
-      syncDOMSelectionToProseMirror(snap);
+      return syncDOMSelectionToProseMirror(snap);
     }
     function observeClipboardSelection() {
       if (!view) return null;
@@ -17760,6 +18180,7 @@ $$`;
       const currentImageState = JSON.stringify(currentImageTx);
       if (currentImageState === lastImageTransactions && imageFenceRevision === null) lastPreOpSnapshot = null;
       if (current === previousBase && currentImageState === lastImageTransactions) {
+        publishedMutationVersion = docMutationVersion;
         notifyHistoryAndOutline();
         return;
       }
@@ -17769,6 +18190,7 @@ $$`;
         updateFence();
       }
       revision += 1;
+      publishedMutationVersion = docMutationVersion;
       base2 = current;
       lastImageTransactions = currentImageState;
       emittedEditorState = view.state;
@@ -17814,6 +18236,10 @@ $$`;
                 mdEmpty: false
               }, node.marks);
               return false;
+            }
+            if (node.type === schema.nodes.paragraph && node.attrs.mdEmpty && node.content.size > 0) {
+              if (!fixTr) fixTr = newState.tr;
+              fixTr.setNodeMarkup(pos, null, { ...node.attrs, mdEmpty: false }, node.marks);
             }
             return true;
           });
@@ -17931,6 +18357,7 @@ $$`;
               event.preventDefault();
               return true;
             }
+            resumeDomObserverIfPaused();
             lastInputType = event.inputType || "";
             if (event.inputType === "historyUndo") {
               event.preventDefault();
@@ -17962,6 +18389,7 @@ $$`;
               event.preventDefault();
               return true;
             }
+            resumeDomObserverIfPaused();
             syncDOMSelectionToProseMirror();
             const plain = event.clipboardData?.getData("text/plain") || "";
             const html = event.clipboardData?.getData("text/html") || "";
@@ -17989,6 +18417,11 @@ $$`;
               if (slice2) {
                 applyTransaction2(closeHistory(view.state.tr).replaceSelection(slice2).scrollIntoView(), { inputType: "insertFromPaste" });
               }
+              return true;
+            }
+            if (plain) {
+              event.preventDefault();
+              insertPlainText(view.state.selection, plain);
               return true;
             }
             return false;
@@ -18063,6 +18496,7 @@ $$`;
             }
           }
           view.updateState(candidateState);
+          if (tr.docChanged) docMutationVersion += 1;
           observeClipboardSelection();
           if (tr.docChanged) {
             if (!composing) {
@@ -18183,9 +18617,15 @@ $$`;
       }
       const parts = [];
       contextFragment.forEach((child) => {
-        if (child.isBlock) parts.push(serializeBlockNode(child, { opaqueSources }));
+        if (child.isBlock) {
+          if (child.type.name === "paragraph" && child.content.size === 0 && contextFragment.childCount > 1) {
+            parts.push("  ");
+          } else {
+            parts.push(serializeBlockNode(child, { opaqueSources }));
+          }
+        }
       });
-      return parts.filter(Boolean).join("\n\n");
+      return parts.filter((p) => p !== "").join("\n\n");
     }
     function handleCopyOrCut(event, isCut) {
       if (!view || fenced) return false;
@@ -18304,7 +18744,7 @@ $$`;
       } else if (!text.includes("\n")) {
         tr.insertText(text.replaceAll("	", "\xA0\xA0\xA0\xA0"));
       } else {
-        const paragraphs = text.split("\n").map((line) => line ? schema.nodes.paragraph.create(null, schema.text(line.replaceAll("	", "\xA0\xA0\xA0\xA0"))) : schema.nodes.blank_line.create());
+        const paragraphs = text.split("\n").map((line) => /[ \t]*$/.test(line) && line.trim() === "" ? schema.nodes.blank_line.create() : schema.nodes.paragraph.create(null, schema.text(line.replaceAll("	", "\xA0\xA0\xA0\xA0"))));
         tr.replaceSelection(Slice.maxOpen(Fragment.fromArray(paragraphs)));
       }
       if (!tr.docChanged) return false;
@@ -18312,7 +18752,8 @@ $$`;
       return true;
     }
     function runHistory(dir) {
-      if (!view || fenced || failed) return false;
+      if (!view || fenced || failed || composing) return false;
+      resumeDomObserverIfPaused();
       lastInputType = dir === "undo" ? "historyUndo" : "historyRedo";
       const fn = dir === "undo" ? undo : redo;
       const ok = fn(view.state, (tr) => applyTransaction2(tr, { inputType: lastInputType }));
@@ -18339,26 +18780,16 @@ $$`;
               }
               return;
             }
-            if (domObserverPausedForOversizedTable) {
-              try {
-                view?.domObserver?.start?.();
-              } catch (_) {
-              }
-              domObserverPausedForOversizedTable = false;
+            resumeDomObserverIfPaused();
+            const selChanged = syncFromDOM();
+            if (!view?.hasFocus?.() || selChanged) {
+              syncProseMirrorSelectionToDOM({ force: true });
             }
-            syncFromDOM();
-            syncProseMirrorSelectionToDOM({ force: true });
           },
           true
         );
         targetRoot.addEventListener("pointerdown", () => {
-          if (domObserverPausedForOversizedTable) {
-            try {
-              view?.domObserver?.start?.();
-            } catch (_) {
-            }
-            domObserverPausedForOversizedTable = false;
-          }
+          resumeDomObserverIfPaused();
         });
         targetRoot.addEventListener("mousedown", (e) => {
           if (e.button === 0) {
@@ -18619,6 +19050,7 @@ $$`;
           sourceContextBytes = new TextEncoder().encode(configuration.markdown).length + root.innerHTML.length + 256;
         }
         if (sameMountedSession && serialize() === configuration.markdown) {
+          publishedMutationVersion = docMutationVersion;
           await restoreViewport(configuration.viewport);
           initializing = false;
           updateFence();
@@ -18647,6 +19079,7 @@ $$`;
         installDOMListeners(root);
         lastImageTransactions = JSON.stringify(collectOrderedImageTransactions(view.state.doc));
         emittedEditorState = view.state;
+        publishedMutationVersion = docMutationVersion;
         diagnostics.pushDiagnosticEvent("start", {
           blockCount: (configuration.blocks || []).length,
           markdownLen: base2.length,
@@ -18662,18 +19095,15 @@ $$`;
         initializing = false;
         updateFence();
         root.focus({ preventScroll: true });
+        if (configuration.viewport) {
+          await restoreViewport(configuration.viewport);
+        }
         notifyHistoryAndOutline();
         return true;
       },
       command(command, value) {
-        if (fenced || !view) return false;
-        if (domObserverPausedForOversizedTable) {
-          try {
-            view?.domObserver?.start?.();
-          } catch (_) {
-          }
-          domObserverPausedForOversizedTable = false;
-        }
+        if (fenced || failed || composing || !view) return false;
+        resumeDomObserverIfPaused();
         if (command === "delete") {
           lastInputType = "deleteContentBackward";
         } else if (command !== "undo" && command !== "redo") {
@@ -18838,7 +19268,7 @@ $$`;
         return bookmarks.delete(key);
       },
       insertBookmarked(key, html, atoms, transaction, imageSources, singleLine = false, imageEnding = null) {
-        if (fenced || !view) return false;
+        if (fenced || failed || composing || !view) return false;
         const saved = bookmarks.get(key);
         bookmarks.delete(key);
         if (!saved || saved.base !== serialize() || !currentClipboardSelection(saved)) return false;
@@ -18855,7 +19285,7 @@ $$`;
         }
         const sel = Selection.fromJSON(view.state.doc, saved.selectionJSON);
         if (isCodeSelection(sel)) {
-          if (transaction) return false;
+          if (transaction && imageSources?.length) return false;
           return insertPlainText(sel, clipboardPlainText(html));
         }
         const slice2 = buildPasteSlice(template.innerHTML);
@@ -18982,7 +19412,7 @@ $$`;
       insertClipboardText(key, text) {
         const saved = bookmarks.get(key);
         bookmarks.delete(key);
-        if (fenced || !view || !saved || saved.base !== serialize() || !currentClipboardSelection(saved)) return false;
+        if (fenced || failed || composing || !view || !saved || saved.base !== serialize() || !currentClipboardSelection(saved)) return false;
         const sel = Selection.fromJSON(view.state.doc, saved.selectionJSON);
         if (!text) return false;
         if (!view.state.selection.eq(sel)) view.dispatch(view.state.tr.setSelection(sel));
@@ -19065,7 +19495,7 @@ $$`;
         return diagnostics.compareSave(html);
       },
       inspectAppearance(expectedSession, expectedRevision, html) {
-        if (expectedSession !== session || revision !== expectedRevision) return null;
+        if (expectedSession !== session || revision !== expectedRevision || composing || pendingEmitTimer !== null || docMutationVersion !== publishedMutationVersion) return null;
         return diagnostics.inspect(html);
       },
       diagnosticReport(includeContent = false) {
@@ -19093,6 +19523,7 @@ $$`;
         if (lastPreOpSnapshot?.revision === expectedRevision && lastPreOpSnapshot.markdown === previous) {
           view.updateState(lastPreOpSnapshot.editorState);
           emittedEditorState = view.state;
+          publishedMutationVersion = docMutationVersion;
           base2 = previous;
           lastImageTransactions = JSON.stringify(collectOrderedImageTransactions(view.state.doc));
           lastPreOpSnapshot = null;

@@ -92,13 +92,13 @@ function emptyPMOrDOMPlaceholder(container) {
   return node;
 }
 
-function deletedDocumentPlaceholder(container, inputType) {
-  if (!String(inputType || '').startsWith('delete')) return null;
+function deletedDocumentPlaceholder(container, _inputType) {
   const visible = Array.from(container.children).filter(
     n => !n.hasAttribute('data-md-edit-boundary') && !n.classList.contains('ProseMirror-separator')
   );
   return visible.length === 1 &&
-    !visible[0].textContent.length &&
+    visible[0].tagName === 'P' &&
+    !visible[0].textContent.replace(/\u200b/g, '').length &&
     !Array.from(container.childNodes).some(n => n.nodeType === 3 && n.data.trim()) &&
     visible[0].querySelectorAll('br').length <= 1 &&
     !visible[0].querySelector('img:not(.ProseMirror-separator),input,hr,table,pre,code,[data-md-opaque],[data-tex]')
@@ -121,6 +121,9 @@ export function saveAppearance(container, inputType = '') {
   const formats = [];
   const breaks = [];
   const blockTypes = [];
+  const links = [];
+  const tasks = [];
+  const listStarts = [];
 
   function recordBreaks(count) {
     if (!count) return;
@@ -185,7 +188,17 @@ export function saveAppearance(container, inputType = '') {
     }
     const tag = node.tagName;
     const isBlock = blockSet.test(tag);
-    if (tag === 'INPUT' && node.type === 'checkbox') return;
+    if (tag === 'INPUT' && node.type === 'checkbox') {
+      tasks.push(!!(node.checked || node.hasAttribute('checked')));
+      return;
+    }
+    if (tag === 'OL') {
+      const startAttr = node.getAttribute('start')?.trim();
+      listStarts.push(startAttr && /^[+-]?\d+$/.test(startAttr) ? Number(startAttr) : 1);
+    }
+    if (tag === 'A' && node.hasAttribute('href')) {
+      links.push(node.getAttribute('href') || '');
+    }
     if (node.classList?.contains('fastra-pm-li-content') || (tag === 'DIV' && node.classList?.contains('ProseMirror'))) {
       for (const child of node.childNodes) visit(child, style, tableCell);
       return;
@@ -215,13 +228,22 @@ export function saveAppearance(container, inputType = '') {
       boundary();
       const semantic = semanticBlockTag(tag);
       const liParent = tag === 'P' ? node.closest?.('li') : null;
-      const emptyPlaceholderParagraph = tag === 'P' &&
-        !node.textContent.replace(/\u200b/g, '').length &&
-        !node.querySelector('img:not(.ProseMirror-separator),[data-tex],[data-md-opaque],hr,table,pre,input');
+      const cellParent = tag === 'P' ? node.closest?.('td,th') : null;
+      const emptyTopParagraph = tag === 'P' &&
+        !liParent &&
+        !cellParent &&
+        !node.textContent.replace(/[\u200b \t\r\n\f]/g, '').length &&
+        !node.querySelector('img:not(.ProseMirror-separator),[data-tex],[data-md-opaque],hr,table,pre,input,br:not(.ProseMirror-trailingBreak)');
+      if (emptyTopParagraph) {
+        // Ein leerer Top-Level-Absatz außerhalb von Platzhaltern wirkt visuell wie eine
+        // sichtbare Leerzeile und darf nie still gegen eine gespeicherte Leerzeile verschwinden.
+        recordBreaks(1);
+        boundary();
+        return;
+      }
       if (
         semantic &&
         !liParent &&
-        !emptyPlaceholderParagraph &&
         !(tag === 'DIV' && (node.classList.contains('fastra-visible-blank-line') || node.hasAttribute('data-md-block')))
       ) {
         blockTypes.push(semantic);
@@ -257,7 +279,7 @@ export function saveAppearance(container, inputType = '') {
 
   for (const node of container.childNodes) visit(node, 0, false);
   boundary();
-  return { text, formats, breaks, blockTypes };
+  return { text, formats, breaks, blockTypes, links, tasks, listStarts };
 }
 
 /**
@@ -299,6 +321,38 @@ export function diffAppearance(live, saved, { includeContent = true } = {}) {
         savedBlockCount: saved.blockTypes.length,
         liveBlocks: live.blockTypes.slice(0, 24),
         savedBlocks: saved.blockTypes.slice(0, 24)
+      }
+    };
+  }
+  if (JSON.stringify(live.links || []) !== JSON.stringify(saved.links || [])) {
+    return {
+      outcome: 'format',
+      diff: {
+        kind: 'links',
+        liveCount: (live.links || []).length,
+        savedCount: (saved.links || []).length
+      }
+    };
+  }
+  if (JSON.stringify(live.tasks || []) !== JSON.stringify(saved.tasks || [])) {
+    return {
+      outcome: 'format',
+      diff: {
+        kind: 'tasks',
+        liveCount: (live.tasks || []).length,
+        savedCount: (saved.tasks || []).length,
+        liveTasks: (live.tasks || []).slice(0, 24),
+        savedTasks: (saved.tasks || []).slice(0, 24)
+      }
+    };
+  }
+  if (JSON.stringify(live.listStarts || []) !== JSON.stringify(saved.listStarts || [])) {
+    return {
+      outcome: 'format',
+      diff: {
+        kind: 'listStarts',
+        liveStarts: (live.listStarts || []).slice(0, 24),
+        savedStarts: (saved.listStarts || []).slice(0, 24)
       }
     };
   }
@@ -352,7 +406,9 @@ export function createDiagnosticsController({
     if (!container) return 0;
     const clone = container.cloneNode(true);
     clone.querySelectorAll('[data-md-edit-boundary]').forEach(n => n.remove());
-    return (clone.textContent || '').replace(/[\u200b\u2060]/g, '').length;
+    // Zeilenumbrüche (\r/\n, z. B. in Codeblöcken) wie <br> behandeln, damit Umformatieren
+    // zwischen Codeblock und Absatz/Überschrift keinen falschen Textverlust meldet.
+    return (clone.textContent || '').replace(/[\u200b\u2060\r\n]/g, '').length;
   }
 
   function selectionSummary(view) {

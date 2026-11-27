@@ -2266,7 +2266,11 @@ final class Workspace: ObservableObject {
     /// ohne den aktuellen Editor umzuschalten; erneuter Shift-Klick auf einen
     /// der beiden Tabs hebt nur die Paarwahl auf.
     func selectTab(id: UUID, extendingComparison: Bool = false) {
-        if !extendingComparison, synchronizeVisualMarkdownBefore({ self.selectTab(id: id) }) { return }
+        if !extendingComparison,
+           synchronizeVisualMarkdownBefore(
+               { self.selectTab(id: id) },
+               checkingSave: activeTab?.isDirty == true && visualMarkdownEditor?.tabID == activeTabID
+           ) { return }
         guard let candidate = tabs.first(where: { $0.id == id }) else { return }
 
         if extendingComparison,
@@ -3729,7 +3733,15 @@ final class Workspace: ObservableObject {
         if previousURL != url {
             clearVisualSaveCheck(for: tabs[idx].id)
             if visualMarkdownEditor?.tabID == tabs[idx].id {
-                visualMarkdownEditor?.invalidateForSourceReplacement()
+                let hasLocalRefs = !MarkdownImageCleanup.references(tabs[idx].content, documentURL: url).isEmpty
+                if previousURL == nil,
+                   !hasLocalRefs,
+                   visualMarkdownEditor?.documentURL == nil,
+                   visualMarkdownEditor?.ready == true {
+                    visualMarkdownEditor?.adoptInitialDocumentURL(url)
+                } else {
+                    visualMarkdownEditor?.invalidateForSourceReplacement()
+                }
             }
         }
         // Die manuelle Formatwahl gehört zur Datei und muss deshalb am neuen

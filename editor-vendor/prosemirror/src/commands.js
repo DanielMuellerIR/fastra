@@ -98,7 +98,7 @@ function inlineMarkTypesToStrip(schema) {
 }
 
 function splitLeafByHardBreaksIfPartial(tr, schema, node, pos, selFrom, selTo, level) {
-  if (!node.isTextblock) return false;
+  if (node.type !== schema.nodes.paragraph && node.type !== schema.nodes.blank_line) return null;
   const lines = [];
   let currentNodes = [];
   let lineStartOffset = 0;
@@ -117,7 +117,7 @@ function splitLeafByHardBreaksIfPartial(tr, schema, node, pos, selFrom, selTo, l
   });
   lines.push({ nodes: currentNodes, start: lineStartOffset, end: cursorOffset });
 
-  if (lines.length <= 1) return false;
+  if (lines.length <= 1) return null;
 
   const contentStart = pos + 1;
   const lineMatches = line => {
@@ -128,34 +128,67 @@ function splitLeafByHardBreaksIfPartial(tr, schema, node, pos, selFrom, selTo, l
   };
 
   const touched = lines.map(lineMatches);
-  if (touched.every(Boolean) || !touched.some(Boolean)) return false;
+  if (touched.every(Boolean) || !touched.some(Boolean)) return null;
 
   const replacementBlocks = [];
-  let firstTouched = true;
+  let usedOrigin = false;
+  let pendingParagraphNodes = [];
+  let headingRange = null;
+  let runningPos = pos;
+
+  const originAttrs = () => {
+    if (usedOrigin) return { mdContext: '', mdBlockId: null, mdBlockSub: 0, mdBlockTotal: 1 };
+    usedOrigin = true;
+    return {
+      mdContext: node.attrs.mdContext || '',
+      mdBlockId: node.attrs.mdBlockId || null,
+      mdBlockSub: node.attrs.mdBlockSub || 0,
+      mdBlockTotal: node.attrs.mdBlockTotal || 1
+    };
+  };
+
+  const flushParagraph = () => {
+    if (!pendingParagraphNodes.length) return;
+    const p = schema.nodes.paragraph.create({ ...originAttrs(), mdEmpty: false }, Fragment.fromArray(pendingParagraphNodes));
+    replacementBlocks.push(p);
+    runningPos += p.nodeSize;
+    pendingParagraphNodes = [];
+  };
+
   lines.forEach((line, index) => {
     const content = Fragment.fromArray(line.nodes);
     if (touched[index]) {
-      replacementBlocks.push(schema.nodes.heading.create({
+      flushParagraph();
+      const h = schema.nodes.heading.create({
         level,
         outlineIgnore: false,
-        mdContext: firstTouched ? (node.attrs.mdContext || '') : '',
-        mdBlockId: firstTouched ? (node.attrs.mdBlockId || null) : null,
-        mdBlockSub: node.attrs.mdBlockSub || 0,
-        mdBlockTotal: node.attrs.mdBlockTotal || 1
-      }, content));
-      firstTouched = false;
-    } else if (content.size > 0 || replacementBlocks.length > 0) {
-      replacementBlocks.push(schema.nodes.paragraph.create({ mdEmpty: false }, content));
+        ...originAttrs()
+      }, content);
+      if (!headingRange) headingRange = { from: runningPos + 1, to: runningPos + 1 + h.content.size };
+      else headingRange.to = runningPos + 1 + h.content.size;
+      replacementBlocks.push(h);
+      runningPos += h.nodeSize;
+    } else if (content.size === 0) {
+      flushParagraph();
+      const b = schema.nodes.blank_line.create();
+      replacementBlocks.push(b);
+      runningPos += b.nodeSize;
+    } else {
+      if (pendingParagraphNodes.length) {
+        pendingParagraphNodes.push(schema.nodes.hard_break.create());
+      }
+      line.nodes.forEach(n => pendingParagraphNodes.push(n));
     }
   });
+  flushParagraph();
 
-  if (!replacementBlocks.length) return false;
+  if (!replacementBlocks.length) return null;
   tr.replaceWith(pos, pos + node.nodeSize, replacementBlocks);
-  return true;
+  return headingRange || { from: pos + 1, to: pos + 1 };
 }
 
 function liftSelectedListItemsWithOrder(state, schema) {
-  const { $from, $to } = state.selection;
+  const { $from, $to, empty, from, to } = state.selection;
   const listAncestor = findNearestListAncestor($from, schema);
   if (!listAncestor || $to.depth < listAncestor.depth ||
       $to.before(listAncestor.depth) !== listAncestor.pos) return null;
@@ -168,9 +201,8 @@ function liftSelectedListItemsWithOrder(state, schema) {
   const firstIdx = $from.index(listAncestor.depth);
   const lastIdx = $to.index(listAncestor.depth);
 
-  // Wenn tiefer verschachtelte Liste angehoben wird oder der einfache
-  // Standardschritt reicht und kein nummerierter Nachlauf geändert werden muss:
-  if (listNode.childCount === 1 || lastIdx === listNode.childCount - 1) {
+  // Einzel-Listenpunkt am Listenende oder tiefer verschachtelter Lift: Standard-liftListItem.
+  if (firstIdx === lastIdx && (listNode.childCount === 1 || lastIdx === listNode.childCount - 1)) {
     let liftTr = null;
     if (liftListItem(schema.nodes.list_item)(state, t => { liftTr = t; })) {
       return liftTr;
@@ -178,11 +210,28 @@ function liftSelectedListItemsWithOrder(state, schema) {
     return null;
   }
 
-  // Isolierter Teil-Lift mitten aus einer Liste heraus: Vorlauf, gehobene
-  // Blöcke und Nachlauf (mit korrigiertem `order` bei `ordered_list`, Sol #12).
+  // Teil- oder Mehrfach-Lift aus einer Liste: Vorlauf, gehobene Blöcke und
+  // Nachlauf (mit korrigiertem `order` bei `ordered_list`, Sol #12) unter Erhalt der Auswahl.
   const beforeItems = [];
   const liftedBlocks = [];
   const afterItems = [];
+  const itemRelFrom = (() => {
+    let itemStart = listPos + 1;
+    for (let i = 0; i < firstIdx; i++) itemStart += listNode.child(i).nodeSize;
+    return Math.max(0, from - (itemStart + 1));
+  })();
+  const itemRelEndFromEnd = (() => {
+    let itemStart = listPos + 1;
+    for (let i = 0; i <= lastIdx; i++) {
+      const sz = listNode.child(i).nodeSize;
+      if (i === lastIdx) {
+        const contentEnd = itemStart + sz - 1;
+        return Math.max(0, contentEnd - to);
+      }
+      itemStart += sz;
+    }
+    return 0;
+  })();
 
   for (let i = 0; i < listNode.childCount; i++) {
     const item = listNode.child(i);
@@ -214,9 +263,21 @@ function liftSelectedListItemsWithOrder(state, schema) {
   }
 
   const tr = state.tr.replaceWith(listPos, listPos + listNode.nodeSize, replacements);
-  let caretPos = listPos;
-  if (beforeItems.length) caretPos += replacements[0].nodeSize;
-  tr.setSelection(TextSelection.near(tr.doc.resolve(caretPos + 1)));
+  let liftedStart = listPos;
+  if (beforeItems.length) liftedStart += replacements[0].nodeSize;
+  const liftedSize = liftedBlocks.reduce((sum, b) => sum + b.nodeSize, 0);
+  const liftedEnd = liftedStart + liftedSize;
+  if (empty) {
+    const targetPos = Math.min(liftedEnd, liftedStart + itemRelFrom);
+    tr.setSelection(TextSelection.near(tr.doc.resolve(targetPos)));
+  } else {
+    const selStart = Math.min(liftedEnd, liftedStart + itemRelFrom);
+    const selEnd = Math.max(selStart, liftedEnd - itemRelEndFromEnd);
+    tr.setSelection(TextSelection.between(
+      tr.doc.resolve(selStart),
+      tr.doc.resolve(selEnd)
+    ));
+  }
   return tr;
 }
 
@@ -254,21 +315,76 @@ function applyHeadingOrParagraph(state, dispatch, schema, { level = null }) {
     return { handled: true, changed: anyMark };
   }
 
+  function findAnyListItemInSelection(selState) {
+    const { from: sFrom, to: sTo, $from: s$From, $to: s$To } = selState.selection;
+    const ancFrom = findAncestorOfType(s$From, schema.nodes.list_item);
+    if (ancFrom) {
+      const listAnc = findNearestListAncestor(s$From, schema);
+      if (listAnc) {
+        const listEnd = listAnc.pos + listAnc.node.nodeSize - 1;
+        return {
+          listPos: listAnc.pos,
+          listEnd: listAnc.pos + listAnc.node.nodeSize,
+          itemFrom: sFrom,
+          itemTo: Math.min(sTo, listEnd),
+          containsStart: true,
+          containsEnd: sTo <= listEnd + 1
+        };
+      }
+    }
+    let found = null;
+    selState.doc.nodesBetween(sFrom, sTo, (node, pos) => {
+      if (found) return false;
+      if (node.type === schema.nodes.bullet_list || node.type === schema.nodes.ordered_list) {
+        found = {
+          listPos: pos,
+          listEnd: pos + node.nodeSize,
+          itemFrom: Math.max(sFrom, pos + 2),
+          itemTo: Math.min(sTo, pos + node.nodeSize - 2),
+          containsStart: sFrom >= pos,
+          containsEnd: sTo <= pos + node.nodeSize
+        };
+        return false;
+      }
+      return true;
+    });
+    return found;
+  }
+
   const steps = [];
   let workState = state;
-  if (findAncestorOfType(workState.selection.$from, schema.nodes.list_item)) {
-    let safety = 0;
-    while (findAncestorOfType(workState.selection.$from, schema.nodes.list_item) && safety < 16) {
-      safety++;
-      const liftTr = liftSelectedListItemsWithOrder(workState, schema);
-      if (!liftTr) break;
-      steps.push(liftTr);
-      workState = workState.apply(liftTr);
-    }
+  let liftSafety = 0;
+  while (liftSafety < 32) {
+    const targetList = findAnyListItemInSelection(workState);
+    if (!targetList) break;
+    liftSafety++;
+    const origSel = workState.selection;
+    const subSelState = workState.apply(
+      workState.tr.setSelection(TextSelection.between(
+        workState.doc.resolve(targetList.itemFrom),
+        workState.doc.resolve(Math.max(targetList.itemFrom, targetList.itemTo))
+      ))
+    );
+    const liftTr = liftSelectedListItemsWithOrder(subSelState, schema);
+    if (!liftTr) break;
+    const nextFrom = targetList.containsStart
+      ? liftTr.selection.from
+      : Math.max(0, liftTr.mapping.map(origSel.from, -1));
+    const nextTo = targetList.containsEnd
+      ? liftTr.selection.to
+      : Math.min(liftTr.doc.content.size, liftTr.mapping.map(origSel.to, 1));
+    liftTr.setSelection(
+      origSel.empty
+        ? TextSelection.near(liftTr.doc.resolve(nextFrom))
+        : TextSelection.between(liftTr.doc.resolve(nextFrom), liftTr.doc.resolve(Math.max(nextFrom, nextTo)))
+    );
+    steps.push(liftTr);
+    workState = workState.apply(liftTr);
   }
   if (level === null) {
     let safety = 0;
-    while (findAncestorOfType(workState.selection.$from, schema.nodes.blockquote) && safety < 16) {
+    while ((findAncestorOfType(workState.selection.$from, schema.nodes.blockquote) ||
+            findAncestorOfType(workState.selection.$to, schema.nodes.blockquote)) && safety < 16) {
       safety++;
       let bqTr = null;
       if (!lift(workState, t => { bqTr = t; })) break;
@@ -310,10 +426,13 @@ function applyHeadingOrParagraph(state, dispatch, schema, { level = null }) {
 
   const editTr = workState.tr;
   let blockChanged = false;
+  let splitSelection = null;
   if (level != null) {
     for (let i = targets.length - 1; i >= 0; i--) {
       const { node, pos } = targets[i];
-      if (splitLeafByHardBreaksIfPartial(editTr, schema, node, pos, from, to, level)) {
+      const splitRange = splitLeafByHardBreaksIfPartial(editTr, schema, node, pos, from, to, level);
+      if (splitRange) {
+        splitSelection = splitRange;
         blockChanged = true;
         continue;
       }
@@ -330,6 +449,13 @@ function applyHeadingOrParagraph(state, dispatch, schema, { level = null }) {
       }, node.marks);
       convertCodeLineBreaks(editTr, node, pos, schema);
       blockChanged = true;
+    }
+    if (splitSelection) {
+      editTr.setSelection(
+        from === to
+          ? TextSelection.near(editTr.doc.resolve(splitSelection.from))
+          : TextSelection.between(editTr.doc.resolve(splitSelection.from), editTr.doc.resolve(splitSelection.to))
+      );
     }
   } else {
     const marksToRemove = inlineMarkTypesToStrip(schema);
@@ -373,7 +499,7 @@ function dispatchMerged(baseState, transactions, dispatch) {
     for (const s of t.steps) combined.step(s);
   }
   const last = transactions.at(-1);
-  if (last?.selectionSet) {
+  if (last?.selection && transactions.some(t => t.selectionSet)) {
     combined.setSelection(Selection.fromJSON(combined.doc, last.selection.toJSON()));
   }
   dispatch(combined.scrollIntoView());
@@ -387,56 +513,114 @@ function toggleListMode(state, dispatch, schema, mode /* 'bullet' | 'ordered' | 
   const { $from, $to, from, to } = state.selection;
   const fromList = findNearestListAncestor($from, schema);
 
-  // Bereich über mehrere Top-Level-Blöcke / getrennte Listen (z. B. Aufgabe über Zwischenabsatz hinweg):
-  const outerList = (() => {
-    for (let d = 1; d <= $from.depth; d++) {
-      const n = $from.node(d);
-      if (n.type === schema.nodes.bullet_list || n.type === schema.nodes.ordered_list) {
-        return { node: n, pos: $from.before(d) };
-      }
-    }
-    return null;
-  })();
-  const spansMultipleLists = from < to && (
-    !outerList ||
-    from < outerList.pos ||
-    to > outerList.pos + outerList.node.nodeSize
+  const spansOutsideSingleList = from < to && (
+    !fromList ||
+    $to.depth < fromList.depth ||
+    $to.before(fromList.depth) !== fromList.pos
   );
-  if (spansMultipleLists && mode === 'task') {
-    const itemTargets = [];
-    const listContainersToConvert = [];
-    state.doc.nodesBetween(from, to, (node, pos) => {
-      if (node.type === schema.nodes.ordered_list) {
-        listContainersToConvert.push({ node, pos });
-      }
-      if (node.type === schema.nodes.list_item) {
-        itemTargets.push({ node, pos });
+  let touchesListInMixedRange = false;
+  if (spansOutsideSingleList) {
+    state.doc.nodesBetween(from, to, node => {
+      if (node.type === schema.nodes.bullet_list || node.type === schema.nodes.ordered_list) {
+        touchesListInMixedRange = true;
+        return false;
       }
       return true;
     });
-    if (itemTargets.length > 0) {
-      const allAlreadyTask = itemTargets.every(it => it.node.attrs.task !== null) && !listContainersToConvert.length;
-      if (!allAlreadyTask) {
-        if (!dispatch) return true;
-        const tr = state.tr;
-        for (const { node, pos } of listContainersToConvert) {
-          tr.setNodeMarkup(pos, schema.nodes.bullet_list, {
-            mdContext: node.attrs.mdContext || '',
-            mdBlockId: node.attrs.mdBlockId || null,
-            mdBlockSub: node.attrs.mdBlockSub || 0,
-            mdBlockTotal: node.attrs.mdBlockTotal || 1,
-            tight: node.attrs.tight !== false
-          });
-        }
-        for (const { node, pos } of itemTargets) {
-          if (node.attrs.task === null) {
-            tr.setNodeMarkup(pos, null, { ...node.attrs, task: false });
-          }
-        }
-        dispatch(tr.scrollIntoView());
+  }
+
+  if (spansOutsideSingleList && mode === 'task' && !touchesListInMixedRange) {
+    // Already handled below when no list is touched.
+  } else if (spansOutsideSingleList && touchesListInMixedRange) {
+    if (mode === 'task') {
+      // Nur berührte Listenpunkte zu Aufgaben wandeln, damit Zwischenabsätze erhalten bleiben.
+      const itemTargets = [];
+      const listContainersToConvert = [];
+      state.doc.nodesBetween(from, to, (node, pos) => {
+        if (node.type === schema.nodes.ordered_list) listContainersToConvert.push({ node, pos });
+        if (node.type === schema.nodes.list_item) itemTargets.push({ node, pos });
         return true;
+      });
+      if (itemTargets.length > 0) {
+        const allAlreadyTask = itemTargets.every(it => it.node.attrs.task !== null) && !listContainersToConvert.length;
+        if (!allAlreadyTask) {
+          if (!dispatch) return true;
+          const tr = state.tr;
+          for (const { node, pos } of listContainersToConvert) {
+            tr.setNodeMarkup(pos, schema.nodes.bullet_list, {
+              mdContext: node.attrs.mdContext || '',
+              mdBlockId: node.attrs.mdBlockId || null,
+              mdBlockSub: node.attrs.mdBlockSub || 0,
+              mdBlockTotal: node.attrs.mdBlockTotal || 1,
+              tight: node.attrs.tight !== false
+            });
+          }
+          for (const { node, pos } of itemTargets) {
+            if (node.attrs.task === null) tr.setNodeMarkup(pos, null, { ...node.attrs, task: false });
+          }
+          dispatch(tr.scrollIntoView());
+          return true;
+        }
+        // Alle ausgewählten Listenpunkte sind bereits Tasks -> einheitlich zu Absätzen anheben.
+        const liftAll = applyHeadingOrParagraph(state, dispatch, schema, { level: null });
+        return liftAll.handled;
       }
     }
+
+    // Gemischte Auswahl aus Liste und Normalabsatz einheitlich auf Ziel-Listenart bringen.
+    if (!dispatch) return true;
+    const mixedRes = applyHeadingOrParagraph(state, null, schema, { level: null });
+    let workState = state;
+    const mixedSteps = [];
+    if (mixedRes.handled) {
+      let appliedTr = null;
+      applyHeadingOrParagraph(state, tr => { appliedTr = tr; }, schema, { level: null });
+      if (appliedTr) {
+        mixedSteps.push(appliedTr);
+        workState = state.apply(appliedTr);
+      }
+    }
+    const listType = mode === 'ordered' ? schema.nodes.ordered_list : schema.nodes.bullet_list;
+    const { $from: wFrom, $to: wTo } = workState.selection;
+    const wRange = wFrom.blockRange(wTo);
+    if (!wRange) return false;
+    const prepTr = workState.tr;
+    let convertedBlank = false;
+    workState.doc.nodesBetween(wRange.start, wRange.end, (node, pos) => {
+      if (node.type === schema.nodes.blank_line) {
+        prepTr.setNodeMarkup(pos, schema.nodes.paragraph, {
+          mdContext: node.attrs.mdContext || '',
+          mdBlockId: node.attrs.mdBlockId || null,
+          mdBlockSub: node.attrs.mdBlockSub || 0,
+          mdBlockTotal: node.attrs.mdBlockTotal || 1,
+          mdEmpty: false
+        });
+        convertedBlank = true;
+        return false;
+      }
+      return true;
+    });
+    if (convertedBlank) {
+      mixedSteps.push(prepTr);
+      workState = workState.apply(prepTr);
+    }
+    let wrapped = false;
+    wrapInList(listType, { tight: true })(workState, tr2 => {
+      if (mode === 'task') {
+        const markFrom = Math.min(tr2.selection.from, tr2.doc.content.size);
+        const markTo = Math.min(tr2.selection.to, tr2.doc.content.size);
+        tr2.doc.nodesBetween(markFrom, markTo, (node, pos) => {
+          if (node.type === schema.nodes.list_item && node.attrs.task === null) {
+            tr2.setNodeMarkup(pos, null, { ...node.attrs, task: false });
+          }
+          return true;
+        });
+      }
+      mixedSteps.push(tr2);
+      dispatchMerged(state, mixedSteps, dispatch);
+      wrapped = true;
+    });
+    return wrapped;
   }
 
   if (fromList) {
@@ -638,44 +822,62 @@ function insertHardBreakCommand(state, dispatch, schema) {
   }
 
   const inList = !!findAncestorOfType($from, schema.nodes.list_item);
-  if (!ctx.inTable && !inList && $from.parent.type === schema.nodes.paragraph && $from.nodeBefore?.type === schema.nodes.hard_break) {
-    let poppedBreaks = 0;
-    let scanPos = $from.pos;
-    while (scanPos > $from.start() && workState.doc.resolve(scanPos).nodeBefore?.type === schema.nodes.hard_break) {
-      poppedBreaks++;
-      scanPos -= workState.doc.resolve(scanPos).nodeBefore.nodeSize;
-    }
-    if (poppedBreaks >= 1) {
+  if (!ctx.inTable && !inList && $from.parent.type === schema.nodes.paragraph) {
+    if ($from.parentOffset === 0 && $from.depth === 1 && $from.parent.content.size > 0 && $from.nodeAfter?.type !== schema.nodes.hard_break) {
       if (!dispatch) return true;
-      const splitTr = workState.tr;
-      const parent = $from.parent;
-      const blockStart = $from.start();
-      const blockEnd = $from.end();
-      const beforeSlice = scanPos > blockStart ? workState.doc.slice(blockStart, scanPos).content : Fragment.empty;
-      const afterSlice = $from.pos < blockEnd ? workState.doc.slice($from.pos, blockEnd).content : Fragment.empty;
-      const blocks = [];
-      if (beforeSlice.size > 0) {
-        blocks.push(schema.nodes.paragraph.create({
-          mdContext: parent.attrs.mdContext || '',
-          mdBlockId: parent.attrs.mdBlockId || null,
-          mdBlockSub: parent.attrs.mdBlockSub || 0,
-          mdBlockTotal: parent.attrs.mdBlockTotal || 1,
-          mdEmpty: false
-        }, beforeSlice));
-      }
-      for (let b = 0; b < (afterSlice.size > 0 ? poppedBreaks : poppedBreaks + 1); b++) {
-        blocks.push(schema.nodes.blank_line.create());
-      }
-      if (afterSlice.size > 0) {
-        blocks.push(schema.nodes.paragraph.create({ mdEmpty: false }, afterSlice));
-      }
-      splitTr.replaceWith($from.before(), $from.after(), blocks);
-      let tailOffset = $from.before();
-      for (let b = 0; b < blocks.length - 1; b++) tailOffset += blocks[b].nodeSize;
-      splitTr.setSelection(TextSelection.near(splitTr.doc.resolve(tailOffset + 1)));
+      const splitTr = workState.tr.insert($from.before(), schema.nodes.blank_line.create());
+      splitTr.setSelection(TextSelection.near(splitTr.doc.resolve($from.pos + 2)));
       if (prepTr.steps.length) dispatchMerged(state, [prepTr, splitTr], dispatch);
       else dispatch(splitTr.scrollIntoView());
       return true;
+    }
+    if ($from.nodeBefore?.type === schema.nodes.hard_break || $from.nodeAfter?.type === schema.nodes.hard_break) {
+      let beforeBreaks = 0;
+      let scanStart = $from.pos;
+      while (scanStart > $from.start() && workState.doc.resolve(scanStart).nodeBefore?.type === schema.nodes.hard_break) {
+        beforeBreaks++;
+        scanStart -= workState.doc.resolve(scanStart).nodeBefore.nodeSize;
+      }
+      let afterBreaks = 0;
+      let scanEnd = $from.pos;
+      while (scanEnd < $from.end() && workState.doc.resolve(scanEnd).nodeAfter?.type === schema.nodes.hard_break) {
+        afterBreaks++;
+        scanEnd += workState.doc.resolve(scanEnd).nodeAfter.nodeSize;
+      }
+      const totalBreaks = beforeBreaks + afterBreaks;
+      if (totalBreaks >= 1) {
+        if (!dispatch) return true;
+        const splitTr = workState.tr;
+        const parent = $from.parent;
+        const blockStart = $from.start();
+        const blockEnd = $from.end();
+        const beforeSlice = scanStart > blockStart ? workState.doc.slice(blockStart, scanStart).content : Fragment.empty;
+        const afterSlice = scanEnd < blockEnd ? workState.doc.slice(scanEnd, blockEnd).content : Fragment.empty;
+        const blocks = [];
+        if (beforeSlice.size > 0) {
+          blocks.push(schema.nodes.paragraph.create({
+            mdContext: parent.attrs.mdContext || '',
+            mdBlockId: parent.attrs.mdBlockId || null,
+            mdBlockSub: parent.attrs.mdBlockSub || 0,
+            mdBlockTotal: parent.attrs.mdBlockTotal || 1,
+            mdEmpty: false
+          }, beforeSlice));
+        }
+        const blankCount = afterSlice.size > 0 ? totalBreaks : totalBreaks + 1;
+        for (let b = 0; b < blankCount; b++) {
+          blocks.push(schema.nodes.blank_line.create());
+        }
+        if (afterSlice.size > 0) {
+          blocks.push(schema.nodes.paragraph.create({ mdEmpty: false }, afterSlice));
+        }
+        splitTr.replaceWith($from.before(), $from.after(), blocks);
+        let tailOffset = $from.before();
+        for (let b = 0; b < blocks.length - 1; b++) tailOffset += blocks[b].nodeSize;
+        splitTr.setSelection(TextSelection.near(splitTr.doc.resolve(tailOffset + 1)));
+        if (prepTr.steps.length) dispatchMerged(state, [prepTr, splitTr], dispatch);
+        else dispatch(splitTr.scrollIntoView());
+        return true;
+      }
     }
   }
 
@@ -745,6 +947,15 @@ export function buildEnterCommand(schema = defaultSchema) {
         const pos = $from.before();
         const tr = state.tr.insert($from.after(), schema.nodes.blank_line.create());
         tr.setSelection(TextSelection.near(tr.doc.resolve(pos + parent.nodeSize + 1)));
+        dispatch(tr.scrollIntoView());
+        return true;
+      }
+      if (parent.type === schema.nodes.paragraph && parent.content.size > 0 && $from.parentOffset === 0 && $from.depth === 1) {
+        if (!dispatch) return true;
+        const pos = $from.before();
+        const blank = schema.nodes.blank_line.create();
+        const tr = state.tr.insert(pos, blank);
+        tr.setSelection(TextSelection.near(tr.doc.resolve(pos + blank.nodeSize + 1)));
         dispatch(tr.scrollIntoView());
         return true;
       }
@@ -1020,9 +1231,25 @@ export function executeVisualCommand(view, command, value, {
     case 'taskList':
       handled = toggleListMode(state, dispatch, schema, 'task');
       break;
-    case 'quote':
-      handled = unwrapBlockquote(state, dispatch, schema) || wrapIn(schema.nodes.blockquote)(state, dispatch);
+    case 'quote': {
+      if (unwrapBlockquote(state, dispatch, schema)) {
+        handled = true;
+        break;
+      }
+      const { $from, $to } = state.selection;
+      const listAnc = findNearestListAncestor($from, schema);
+      if (listAnc && $to.depth >= listAnc.depth && $to.before(listAnc.depth) === listAnc.pos) {
+        const range = state.doc.resolve(listAnc.pos).blockRange(state.doc.resolve(listAnc.pos + listAnc.node.nodeSize));
+        const wrapping = range && findWrapping(range, schema.nodes.blockquote);
+        if (wrapping) {
+          dispatch(state.tr.wrap(range, wrapping).scrollIntoView());
+          handled = true;
+          break;
+        }
+      }
+      handled = wrapIn(schema.nodes.blockquote)(state, dispatch);
       break;
+    }
     case 'hardBreak':
       handled = insertHardBreakCommand(state, dispatch, schema);
       break;
@@ -1063,9 +1290,43 @@ export function executeVisualCommand(view, command, value, {
     case 'italic':
       handled = toggleMark(schema.marks.em)(state, dispatch);
       break;
-    case 'code':
-      handled = toggleMark(schema.marks.code)(state, dispatch);
+    case 'code': {
+      const codeMark = schema.marks.code;
+      if (state.selection.empty) {
+        handled = toggleMark(codeMark)(state, dispatch);
+      } else {
+        const { from, to } = state.selection;
+        let hasText = false;
+        let hasActiveCode = false;
+        state.doc.nodesBetween(from, to, node => {
+          if (node.isText) {
+            hasText = true;
+            if (codeMark.isInSet(node.marks)) hasActiveCode = true;
+          }
+          return true;
+        });
+        if (!hasText) {
+          return { executed: false, changed: false, reason: 'protected' };
+        }
+        const tr = state.tr;
+        if (hasActiveCode) {
+          tr.removeMark(from, to, codeMark);
+        } else {
+          state.doc.nodesBetween(from, to, (node, pos) => {
+            if (!node.isText) return true;
+            const segFrom = Math.max(from, pos);
+            const segTo = Math.min(to, pos + node.nodeSize);
+            if (segFrom < segTo) tr.addMark(segFrom, segTo, codeMark.create());
+            return true;
+          });
+        }
+        if (tr.docChanged) {
+          dispatch(tr.scrollIntoView());
+          handled = true;
+        }
+      }
       break;
+    }
     case 'highlight':
       handled = toggleMark(schema.marks.highlight)(state, dispatch);
       break;

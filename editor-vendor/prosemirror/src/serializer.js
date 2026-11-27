@@ -49,11 +49,14 @@ function escapePlainSegment(segment, { atBlockStart = false, tableCell = false }
 
   if (atBlockStart) {
     out = out
-      .replace(/^(#{1,6})(\s|$)/, '\\$1$2')
-      .replace(/^>/, '\\>')
-      .replace(/^(\s*[-+*])(\s|$)/, (_, m, ws) => m.replace(/([-+*])$/, '\\$1') + ws)
-      .replace(/^([ \t]*)(-)(?=(?:[ \t]*-)+[ \t]*$)/, '$1\\$2')
-      .replace(/^(\d+)([.)]) /, '$1\\$2 ');
+      .replace(/^([ \t]{0,3})(#{1,6})(?=\s|$)/, '$1\\$2')
+      .replace(/^([ \t]{0,3})>/, '$1\\>')
+      .replace(/^([ \t]*[-+*])(\s|$)/, (_, m, ws) => m.replace(/([-+*])$/, '\\$1') + ws)
+      .replace(/^([ \t]{0,3})(-)(?=(?:[ \t]*[-:|])+[ \t]*$)/, '$1\\$2')
+      .replace(/^([ \t]{0,3})(-)(?=[ \t]*\|)/, '$1\\$2')
+      .replace(/^([ \t]{0,3})(=+)(?=[ \t]*$)/, '$1\\$2')
+      .replace(/^([ \t]{0,3})(\d{1,9})([.)])(?=\s|$)/, '$1$2\\$3')
+      .replace(/^(?: {4}| {0,3}\t)(?=\S)/, m => (m[0] === '\t' ? '&#9;' : '&#32;') + m.slice(1));
   }
 
   if (tableCell) {
@@ -217,6 +220,7 @@ function formatLinkDestination(rawHref, tableCell = false, wrap = false) {
   let href = String(rawHref || '');
   if (!href) return '';
   if (tableCell) href = escapeTablePipes(href).replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+  href = href.replace(/&(?=[A-Za-z0-9#]+;)/g, '\\&');
   if (wrap || /[\s()<>[\]\u0000-\u001f]/.test(href)) {
     return `<${href.replace(/</g, '%3C').replace(/>/g, '%3E')}>`;
   }
@@ -270,14 +274,21 @@ export function serializeInline(fragment, { opaqueSources = {}, protect = null, 
         nextActive.add(key);
 
         if (outer.type.name === 'code') {
-          const parts = [];
+          let parts = [];
+          const flushCodeParts = () => {
+            if (!parts.length) return;
+            out += serializeCodeSpan(parts.join(''), { tableCell });
+            parts = [];
+          };
           for (const sn of subNodes) {
             if (sn.isText) parts.push(sn.text);
             else if (sn.type.name === 'hard_break') parts.push('\n');
-            else if (sn.type.name === 'image') parts.push(renderLeafInline(sn));
-            else if (sn.type.name === 'math_inline' || sn.type.name === 'opaque_inline') parts.push(renderLeafInline(sn));
+            else {
+              flushCodeParts();
+              out += renderLeafInline(sn, (atBlockStart && i === 0 && !out) || out.endsWith('\n'));
+            }
           }
-          out += serializeCodeSpan(parts.join(''), { tableCell });
+          flushCodeParts();
         } else {
           const inner = renderSlice(subNodes, nextActive, false);
           const prevNode = i > 0 ? nodes[i - 1] : null;
@@ -486,10 +497,52 @@ function serializeTable(tableNode, opaqueSources, protect) {
   return lines.join('\n');
 }
 
+function updateListState(state, node, verbatimSource = null) {
+  if (!state) return;
+  if (node?.type?.name === 'ordered_list') {
+    state.kind = 'ordered';
+    if (verbatimSource != null) {
+      const m = verbatimSource.match(/^\s*\d{1,9}([.)])/m);
+      if (m) state.orderedDelimiter = m[1];
+    }
+    return;
+  }
+  if (node?.type?.name === 'bullet_list') {
+    state.kind = 'bullet';
+    if (verbatimSource != null) {
+      const m = verbatimSource.match(/^\s*([-+*])(?:\s|$)/m);
+      if (m) state.bulletMarker = m[1];
+    }
+    return;
+  }
+  state.kind = null;
+}
+
+function chooseListFormatting(state, node) {
+  if (!state) return { orderedDelimiter: '.', bulletMarker: '-' };
+  if (node.type.name === 'ordered_list') {
+    const orderedDelimiter = state.kind === 'ordered' && state.orderedDelimiter === '.' ? ')' : '.';
+    state.kind = 'ordered';
+    state.orderedDelimiter = orderedDelimiter;
+    return { orderedDelimiter, bulletMarker: '-' };
+  }
+  if (node.type.name === 'bullet_list') {
+    const bulletMarker = state.kind === 'bullet' && state.bulletMarker === '-' ? '*' : '-';
+    state.kind = 'bullet';
+    state.bulletMarker = bulletMarker;
+    return { orderedDelimiter: '.', bulletMarker };
+  }
+  state.kind = null;
+  return { orderedDelimiter: '.', bulletMarker: '-' };
+}
+
 /**
  * Serialisiert einen einzelnen ProseMirror-Block knotenrein zu Markdown.
  */
-export function serializeBlockNode(node, { opaqueSources = {}, protect = null, insideContainer = false } = {}) {
+export function serializeBlockNode(
+  node,
+  { opaqueSources = {}, protect = null, insideContainer = false, orderedDelimiter = '.', bulletMarker = '-' } = {}
+) {
   switch (node.type.name) {
     case 'blank_line':
       return node.content.size > 0
@@ -513,9 +566,13 @@ export function serializeBlockNode(node, { opaqueSources = {}, protect = null, i
         return mainText ? `${mainText}\n\n${blanks}` : blanks;
       }
       if (insideContainer) {
-        for (let k = 0; k < trailingBreaks; k++) {
-          items.push(node.type.schema.nodes.hard_break.create());
+        if (!items.length && trailingBreaks === 0) {
+          return insideContainer === 'blockquote' || insideContainer === 'list_item_multi' ? '  ' : '';
         }
+        const mainText = items.length
+          ? serializeInline({ forEach: fn => items.forEach((n, i) => fn(n, i)) }, { opaqueSources, protect })
+          : '';
+        return trailingBreaks > 0 ? `${mainText}${'<br>'.repeat(trailingBreaks)}` : mainText;
       }
       return items.length
         ? serializeInline({ forEach: fn => items.forEach((n, i) => fn(n, i)) }, { opaqueSources, protect })
@@ -538,8 +595,10 @@ export function serializeBlockNode(node, { opaqueSources = {}, protect = null, i
     }
     case 'blockquote': {
       const childStrings = [];
+      const childListState = { kind: null, orderedDelimiter: '.', bulletMarker: '-' };
       node.content.forEach(child => {
-        childStrings.push(serializeBlockNode(child, { opaqueSources, protect, insideContainer: true }));
+        const listStyle = chooseListFormatting(childListState, child);
+        childStrings.push(serializeBlockNode(child, { opaqueSources, protect, insideContainer: 'blockquote', ...listStyle }));
       });
       const joined = childStrings.join('\n\n');
       return joined
@@ -562,13 +621,20 @@ export function serializeBlockNode(node, { opaqueSources = {}, protect = null, i
       const renderedItems = [];
 
       node.content.forEach((item, _offset, index) => {
-        const marker = isOrdered ? `${start + index}. ` : '- ';
+        const marker = isOrdered ? `${start + index}${orderedDelimiter} ` : `${bulletMarker} `;
         const taskPrefix = item.attrs.task !== null ? (item.attrs.task ? '[x] ' : '[ ] ') : '';
         const pad = ' '.repeat(marker.length);
         const childParts = [];
+        const childListState = { kind: null, orderedDelimiter: '.', bulletMarker: '-' };
 
         item.content.forEach((child, _cOffset, cIdx) => {
-          const text = serializeBlockNode(child, { opaqueSources, protect, insideContainer: true });
+          const listStyle = chooseListFormatting(childListState, child);
+          const text = serializeBlockNode(child, {
+            opaqueSources,
+            protect,
+            insideContainer: item.childCount > 1 ? 'list_item_multi' : 'list_item',
+            ...listStyle
+          });
           const prefix = cIdx === 0 ? taskPrefix : '';
           const prefixed = prefix + text;
           const lines = prefixed.split('\n');
@@ -624,18 +690,18 @@ export function serializeDocument(doc, {
   opaqueSources = {},
   lastInputType = ''
 } = {}) {
-  const emptyDocPlaceholder =
+  const isSingleEmptyParagraph =
     doc.childCount === 1 &&
     doc.firstChild.type.name === 'paragraph' &&
-    doc.firstChild.attrs.mdEmpty &&
     doc.firstChild.content.size === 0;
 
+  const emptyDocPlaceholder =
+    isSingleEmptyParagraph &&
+    !!doc.firstChild.attrs.mdEmpty;
+
   const deletedPlaceholder =
-    !emptyDocPlaceholder &&
-    (doc.firstChild.attrs.mdDeleted || String(lastInputType || '').startsWith('delete')) &&
-    doc.childCount === 1 &&
-    doc.firstChild.type.name === 'paragraph' &&
-    doc.firstChild.content.size === 0;
+    isSingleEmptyParagraph &&
+    !doc.firstChild.attrs.mdEmpty;
 
   let contextKey = doc.attrs.sourceContext || '';
   if (!contextKey) {
@@ -681,6 +747,7 @@ export function serializeDocument(doc, {
 
   let output = '';
   let prevBlockWasVerbatim = true;
+  const listState = { kind: null, orderedDelimiter: '.', bulletMarker: '-' };
 
   function lineEndingCount(text) {
     let count = 0;
@@ -696,16 +763,29 @@ export function serializeDocument(doc, {
     if (output) output += ending.repeat(Math.max(0, 2 - lineEndingCount(output)));
   }
 
-  function emitHiddenForBlock(fullId) {
-    if (emittedHidden.has(fullId)) return;
+  function emitHiddenForBlock(fullId, { allowLeadingWhitespace = false } = {}) {
+    if (!fullId || emittedHidden.has(fullId)) return;
     emittedHidden.add(fullId);
     for (const h of ctx.hiddenPrefixes?.get(fullId) || []) {
       emittedHidden.add('hidden:' + h.id);
-      if (!prevBlockWasVerbatim && !h.source.trim() && lineEndingCount(output) >= 2) {
-        continue;
+      if (!h.source.trim()) {
+        if (!output && !allowLeadingWhitespace) continue;
+        if (!prevBlockWasVerbatim && lineEndingCount(output) >= 2) continue;
+      } else {
+        listState.kind = null;
       }
       output += h.source;
     }
+  }
+
+  function collectBlockOrigins(target, out = []) {
+    if (target.attrs?.mdBlockId != null) {
+      out.push(`${target.attrs.mdContext || ''}${target.attrs.mdBlockId}`);
+    }
+    target.content?.forEach(child => {
+      if (child.isBlock) collectBlockOrigins(child, out);
+    });
+    return out;
   }
 
   const docEnding = (ctx.blocks || []).some(b => b.source?.includes('\r\n'))
@@ -717,7 +797,13 @@ export function serializeDocument(doc, {
   // Führende Definitionen bleiben am Dokumentanfang, auch wenn der erste
   // sichtbare Block gelöscht oder verschoben wurde.
   const firstVisible = ctx.blocks?.find(block => !block.hidden);
-  if (firstVisible) emitHiddenForBlock(firstVisible.id);
+  if (firstVisible) {
+    const firstTop = topNodes[0];
+    const firstTopId = firstTop?.attrs?.mdBlockId != null
+      ? `${firstTop.attrs.mdContext || ''}${firstTop.attrs.mdBlockId}`
+      : null;
+    emitHiddenForBlock(firstVisible.id, { allowLeadingWhitespace: firstTopId === firstVisible.id });
+  }
 
   let idx = 0;
   while (idx < topNodes.length) {
@@ -745,6 +831,7 @@ export function serializeDocument(doc, {
           usedOrigins.add(fullId);
           emitHiddenForBlock(fullId);
           output += original.source;
+          updateListState(listState, group.at(-1), original.source);
           prevBlockWasVerbatim = true;
           idx += total;
           continue;
@@ -752,16 +839,20 @@ export function serializeDocument(doc, {
       }
     }
 
-    if (fullId != null) {
-      usedOrigins.add(fullId);
-      emitHiddenForBlock(fullId);
+    for (const originId of collectBlockOrigins(node)) {
+      if (!usedOrigins.has(originId)) {
+        usedOrigins.add(originId);
+        emitHiddenForBlock(originId);
+      }
     }
 
     const sourceEnding = original?.source?.includes('\r\n')
       ? '\r\n'
       : original?.source?.includes('\r')
         ? '\r'
-        : docEnding;
+        : original?.source?.includes('\n')
+          ? '\n'
+          : docEnding;
     const imgEnding = findImageEnding(node);
     const ending = imgEnding || sourceEnding;
 
@@ -779,7 +870,11 @@ export function serializeDocument(doc, {
           Number(cand.attrs?.mdBlockTotal || 1) === total
       );
       if (sameGroup) {
-        const rendered = group.map(n => serializeBlockNode(n, { opaqueSources, protect: protector.protect })).join('\n\n');
+        const rendered = group.map(n => {
+          if (n.type.name === 'paragraph' && n.content.size === 0) return '  ';
+          const listStyle = chooseListFormatting(listState, n);
+          return serializeBlockNode(n, { opaqueSources, protect: protector.protect, ...listStyle });
+        }).join('\n\n');
         let text = ending !== '\n' ? rendered.replace(/\r\n?|\n/g, ending) : rendered;
         text = protector.restore(text);
         const rawTail = original.source.match(/[\r\n]*$/)?.[0] ?? '';
@@ -793,7 +888,26 @@ export function serializeDocument(doc, {
       }
     }
 
-    const rendered = serializeBlockNode(node, { opaqueSources, protect: protector.protect });
+    const isEmptyOrWhitespaceOnlyParagraph =
+      (node.type.name === 'blank_line' && !node.content.size) ||
+      (node.type.name === 'paragraph' &&
+        (node.content.size === 0 ||
+          (node.textContent.replace(/[ \t]/g, '').length === 0 &&
+            (() => {
+              let onlyPlainSpaces = true;
+              node.content.forEach(ch => { if (!ch.isText) onlyPlainSpaces = false; });
+              return onlyPlainSpaces;
+            })())));
+    if (isEmptyOrWhitespaceOnlyParagraph) {
+      listState.kind = null;
+      output += `  ${ending}${ending}`;
+      prevBlockWasVerbatim = false;
+      idx += 1;
+      continue;
+    }
+
+    const listStyle = chooseListFormatting(listState, node);
+    const rendered = serializeBlockNode(node, { opaqueSources, protect: protector.protect, ...listStyle });
     let text = ending !== '\n' ? rendered.replace(/\r\n?|\n/g, ending) : rendered;
     text = protector.restore(text);
 
@@ -815,8 +929,6 @@ export function serializeDocument(doc, {
         ? rawTail
         : ending + ending;
       output += text + tailSuffix;
-    } else if (node.type.name === 'blank_line' && !node.content.size) {
-      output += `  ${ending}${ending}`;
     } else {
       output += text ? `${text}${ending}${ending}` : ending;
     }

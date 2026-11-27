@@ -88,17 +88,18 @@ export function preprocessDOMForParse(container, { stripBlockOrigin = false } = 
  * Stellt fest, ob ein gerendertes <div> nur mehrere leere Zeilen (<br>) enthält
  * (z. B. nach WebKit/Linux-Imports) und wandelt es ggf. in `blank_line`-Elemente um.
  */
-function normalizeLooseBlankDivs(container) {
+function normalizeLooseBlankDivs(container, { convertEmptyParagraphs = false } = {}) {
   const doc = container.ownerDocument;
   container.querySelectorAll('div:not([data-md-block]):not([data-md-opaque]):not([data-tex]), p').forEach(el => {
     if (el.classList.contains('fastra-visible-blank-line')) return;
-    if (el.closest('[data-md-opaque],[data-tex],pre,table')) return;
+    if (el.closest('[data-md-opaque],[data-tex],pre,table,li')) return;
+    if (el.hasAttribute('data-md-empty')) return;
     if (el.textContent.replace(/\u200b/g, '').length) return;
     if (el.querySelector('p,div,h1,h2,h3,h4,h5,h6,ul,ol,li,blockquote,table,pre,code,img,input,hr,[data-md-opaque],[data-tex]')) return;
     const onlyInline = Array.from(el.querySelectorAll('*')).every(c => c.tagName === 'BR' || INLINE_WRAP_TAGS.has(c.tagName));
     if (!onlyInline) return;
     const rawBrCount = el.querySelectorAll('br').length;
-    if (el.tagName === 'P' && rawBrCount < 2) return;
+    if (el.tagName === 'P' && rawBrCount < 2 && !convertEmptyParagraphs) return;
     const brCount = Math.max(1, rawBrCount);
     const frag = doc.createDocumentFragment();
     for (let i = 0; i < brCount; i++) {
@@ -378,7 +379,13 @@ export function parseHTMLToNodes(html, { schema = defaultSchema, ownerDocument =
   const template = ownerDocument.createElement('template');
   template.innerHTML = html || '';
   preprocessDOMForParse(template.content, { stripBlockOrigin: true });
-  normalizeLooseBlankDivs(template.content);
+  const topBlockCount = Array.from(template.content.childNodes).filter(
+    n => n.nodeType === 1 || (n.nodeType === 3 && n.data.trim())
+  ).length;
+  const hasBlankParagraph = topBlockCount > 1 || Array.from(template.content.querySelectorAll('p')).some(
+    p => !p.textContent.replace(/\u200b/g, '').length && p.querySelector('br') && !p.querySelector('img,[data-tex],[data-md-opaque]')
+  );
+  normalizeLooseBlankDivs(template.content, { convertEmptyParagraphs: hasBlankParagraph });
   const wrapper = ownerDocument.createElement('div');
   wrapper.appendChild(template.content.cloneNode(true));
   const parsed = parseWithInlineCodeSpaces(wrapper, DOMParser.fromSchema(schema));

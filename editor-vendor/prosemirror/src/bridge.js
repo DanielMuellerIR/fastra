@@ -1,7 +1,7 @@
 import { EditorState, Plugin, Selection, TextSelection, NodeSelection, AllSelection } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { history, undo as pmUndo, redo as pmRedo, closeHistory } from 'prosemirror-history';
-import { gapCursor } from 'prosemirror-gapcursor';
+import { gapCursor, GapCursor } from 'prosemirror-gapcursor';
 import { Fragment, Slice, DOMSerializer } from 'prosemirror-model';
 import { schema } from './schema.js';
 import {
@@ -56,6 +56,8 @@ export function installFastraVisualBridge() {
   let session = '';
   let base = '';
   let revision = 0;
+  let docMutationVersion = 0;
+  let publishedMutationVersion = 0;
   let composing = false;
   let notifyCompositionEnd = false;
   let fenced = false;
@@ -214,6 +216,12 @@ export function installFastraVisualBridge() {
     } catch (_) {}
   }
 
+  function resumeDomObserverIfPaused() {
+    if (!domObserverPausedForOversizedTable) return;
+    try { view?.domObserver?.start?.(); } catch (_) {}
+    domObserverPausedForOversizedTable = false;
+  }
+
   function captureDOMSelectionSnapshot() {
     if (!root) return null;
     const winSel = document.getSelection?.();
@@ -238,13 +246,13 @@ export function installFastraVisualBridge() {
    * WebKit-Drag) synchron in `view.state.selection`, bevor ein Befehl darauf läuft.
    */
   function syncDOMSelectionToProseMirror(snapshot = null) {
-    if (!view || !root) return;
+    if (!view || !root) return false;
     const active =
       snapshot && root.contains(snapshot.startContainer) && root.contains(snapshot.endContainer)
         ? snapshot
         : captureDOMSelectionSnapshot();
-    if (!active) return;
-    if (view.state.selection instanceof NodeSelection && active.collapsed) return;
+    if (!active) return false;
+    if ((view.state.selection instanceof NodeSelection || view.state.selection instanceof GapCursor) && active.collapsed) return false;
 
     try {
       const doc = view.state.doc;
@@ -261,8 +269,9 @@ export function installFastraVisualBridge() {
         const allSel = new AllSelection(doc);
         if (!(view.state.selection instanceof AllSelection)) {
           view.dispatch(view.state.tr.setSelection(allSel).setMeta('addToHistory', false).setMeta('fastraAllowFenced', true));
+          return true;
         }
-        return;
+        return false;
       }
 
       // Einzelnes ausgewähltes Atom-Element (`img`, KaTeX, Opaque) als NodeSelection binden.
@@ -288,8 +297,9 @@ export function installFastraVisualBridge() {
               const nodeSel = NodeSelection.create(doc, pos);
               if (!(view.state.selection instanceof NodeSelection) || view.state.selection.from !== nodeSel.from) {
                 view.dispatch(view.state.tr.setSelection(nodeSel).setMeta('addToHistory', false).setMeta('fastraAllowFenced', true));
+                return true;
               }
-              return;
+              return false;
             }
           }
         }
@@ -317,9 +327,22 @@ export function installFastraVisualBridge() {
               if (!child) break;
               targetNode = child;
             }
-            const innerPos = targetNode.nodeType === 3
-              ? view.posAtDOM(targetNode, targetNode.data.length)
-              : view.posAtDOM(targetNode, targetNode.childNodes?.length || 0);
+            let innerPos;
+            if (targetNode.nodeType === 3) {
+              innerPos = view.posAtDOM(targetNode, targetNode.data.length);
+            } else if (
+              /^(BR|IMG|HR|INPUT|WBR)$/.test(targetNode.tagName) ||
+              targetNode.hasAttribute?.('data-tex') ||
+              targetNode.hasAttribute?.('data-md-opaque')
+            ) {
+              const parent = targetNode.parentNode;
+              const childIdx = parent ? Array.prototype.indexOf.call(parent.childNodes, targetNode) : -1;
+              innerPos = parent && childIdx >= 0
+                ? view.posAtDOM(parent, childIdx + 1)
+                : view.posAtDOM(el, offset);
+            } else {
+              innerPos = view.posAtDOM(targetNode, targetNode.childNodes?.length || 0);
+            }
             nextSel = Selection.near(doc.resolve(Math.max(0, Math.min(innerPos, doc.content.size))), -1);
           }
         } else if (offset === 0) {
@@ -338,10 +361,12 @@ export function installFastraVisualBridge() {
         view.state.selection instanceof AllSelection
       ) {
         view.dispatch(view.state.tr.setSelection(nextSel).setMeta('addToHistory', false).setMeta('fastraAllowFenced', true));
+        return true;
       }
     } catch (_) {
       // Unvollständige DOM-Ranges außerhalb des PM-Textbaums still ignorieren.
     }
+    return false;
   }
 
   function syncProseMirrorSelectionToDOM({ force = false } = {}) {
@@ -378,7 +403,7 @@ export function installFastraVisualBridge() {
   function syncFromDOM() {
     const snap = captureDOMSelectionSnapshot();
     flushDOMObserver();
-    syncDOMSelectionToProseMirror(snap);
+    return syncDOMSelectionToProseMirror(snap);
   }
 
   function observeClipboardSelection() {
@@ -501,6 +526,7 @@ export function installFastraVisualBridge() {
     const currentImageState = JSON.stringify(currentImageTx);
     if (currentImageState === lastImageTransactions && imageFenceRevision === null) lastPreOpSnapshot = null;
     if (current === previousBase && currentImageState === lastImageTransactions) {
+      publishedMutationVersion = docMutationVersion;
       notifyHistoryAndOutline();
       return;
     }
@@ -511,6 +537,7 @@ export function installFastraVisualBridge() {
       updateFence();
     }
     revision += 1;
+    publishedMutationVersion = docMutationVersion;
     base = current;
     lastImageTransactions = currentImageState;
     emittedEditorState = view.state;
@@ -560,6 +587,10 @@ export function installFastraVisualBridge() {
               mdEmpty: false
             }, node.marks);
             return false;
+          }
+          if (node.type === schema.nodes.paragraph && node.attrs.mdEmpty && node.content.size > 0) {
+            if (!fixTr) fixTr = newState.tr;
+            fixTr.setNodeMarkup(pos, null, { ...node.attrs, mdEmpty: false }, node.marks);
           }
           return true;
         });
@@ -689,6 +720,7 @@ export function installFastraVisualBridge() {
             event.preventDefault();
             return true;
           }
+          resumeDomObserverIfPaused();
           lastInputType = event.inputType || '';
           if (event.inputType === 'historyUndo') {
             event.preventDefault();
@@ -720,6 +752,7 @@ export function installFastraVisualBridge() {
             event.preventDefault();
             return true;
           }
+          resumeDomObserverIfPaused();
           syncDOMSelectionToProseMirror();
           const plain = event.clipboardData?.getData('text/plain') || '';
           const html = event.clipboardData?.getData('text/html') || '';
@@ -747,6 +780,11 @@ export function installFastraVisualBridge() {
             if (slice) {
               applyTransaction(closeHistory(view.state.tr).replaceSelection(slice).scrollIntoView(), { inputType: 'insertFromPaste' });
             }
+            return true;
+          }
+          if (plain) {
+            event.preventDefault();
+            insertPlainText(view.state.selection, plain);
             return true;
           }
           return false;
@@ -825,6 +863,7 @@ export function installFastraVisualBridge() {
         }
 
         view.updateState(candidateState);
+        if (tr.docChanged) docMutationVersion += 1;
         observeClipboardSelection();
 
         if (tr.docChanged) {
@@ -961,9 +1000,15 @@ export function installFastraVisualBridge() {
     }
     const parts = [];
     contextFragment.forEach(child => {
-      if (child.isBlock) parts.push(serializeBlockNode(child, { opaqueSources }));
+      if (child.isBlock) {
+        if (child.type.name === 'paragraph' && child.content.size === 0 && contextFragment.childCount > 1) {
+          parts.push('  ');
+        } else {
+          parts.push(serializeBlockNode(child, { opaqueSources }));
+        }
+      }
     });
-    return parts.filter(Boolean).join('\n\n');
+    return parts.filter(p => p !== '').join('\n\n');
   }
 
   function handleCopyOrCut(event, isCut) {
@@ -1100,9 +1145,9 @@ export function installFastraVisualBridge() {
     } else if (!text.includes('\n')) {
       tr.insertText(text.replaceAll('\t', '\u00a0\u00a0\u00a0\u00a0'));
     } else {
-      const paragraphs = text.split('\n').map(line => line
-        ? schema.nodes.paragraph.create(null, schema.text(line.replaceAll('\t', '\u00a0\u00a0\u00a0\u00a0')))
-        : schema.nodes.blank_line.create());
+      const paragraphs = text.split('\n').map(line => (/[ \t]*$/.test(line) && line.trim() === '')
+        ? schema.nodes.blank_line.create()
+        : schema.nodes.paragraph.create(null, schema.text(line.replaceAll('\t', '\u00a0\u00a0\u00a0\u00a0'))));
       tr.replaceSelection(Slice.maxOpen(Fragment.fromArray(paragraphs)));
     }
     if (!tr.docChanged) return false;
@@ -1111,7 +1156,8 @@ export function installFastraVisualBridge() {
   }
 
   function runHistory(dir) {
-    if (!view || fenced || failed) return false;
+    if (!view || fenced || failed || composing) return false;
+    resumeDomObserverIfPaused();
     lastInputType = dir === 'undo' ? 'historyUndo' : 'historyRedo';
     const fn = dir === 'undo' ? pmUndo : pmRedo;
     const ok = fn(view.state, tr => applyTransaction(tr, { inputType: lastInputType }));
@@ -1138,22 +1184,18 @@ export function installFastraVisualBridge() {
             } catch (_) {}
             return;
           }
-          if (domObserverPausedForOversizedTable) {
-            try { view?.domObserver?.start?.(); } catch (_) {}
-            domObserverPausedForOversizedTable = false;
-          }
+          resumeDomObserverIfPaused();
           // DOM-Mutationen und -Auswahl VOR ProseMirrors `domObserver.forceFlush()`
-          // auflösen, damit Caret und synthetische `<br>`-Änderungen konsistent bleiben (`4178`, `6510`).
-          syncFromDOM();
-          syncProseMirrorSelectionToDOM({ force: true });
+          // auflösen; DOM-Auswahl im fokussierten Zustand nur bei echter Abweichung nachziehen.
+          const selChanged = syncFromDOM();
+          if (!view?.hasFocus?.() || selChanged) {
+            syncProseMirrorSelectionToDOM({ force: true });
+          }
         },
         true
       );
       targetRoot.addEventListener('pointerdown', () => {
-        if (domObserverPausedForOversizedTable) {
-          try { view?.domObserver?.start?.(); } catch (_) {}
-          domObserverPausedForOversizedTable = false;
-        }
+        resumeDomObserverIfPaused();
       });
       targetRoot.addEventListener('mousedown', e => {
         if (e.button === 0) {
@@ -1428,6 +1470,7 @@ export function installFastraVisualBridge() {
       }
 
       if (sameMountedSession && serialize() === configuration.markdown) {
+        publishedMutationVersion = docMutationVersion;
         await restoreViewport(configuration.viewport);
         initializing = false;
         updateFence();
@@ -1461,6 +1504,7 @@ export function installFastraVisualBridge() {
 
       lastImageTransactions = JSON.stringify(collectOrderedImageTransactions(view.state.doc));
       emittedEditorState = view.state;
+      publishedMutationVersion = docMutationVersion;
       diagnostics.pushDiagnosticEvent('start', {
         blockCount: (configuration.blocks || []).length,
         markdownLen: base.length,
@@ -1478,15 +1522,15 @@ export function installFastraVisualBridge() {
       initializing = false;
       updateFence();
       root.focus({ preventScroll: true });
+      if (configuration.viewport) {
+        await restoreViewport(configuration.viewport);
+      }
       notifyHistoryAndOutline();
       return true;
     },
     command(command, value) {
-      if (fenced || !view) return false;
-      if (domObserverPausedForOversizedTable) {
-        try { view?.domObserver?.start?.(); } catch (_) {}
-        domObserverPausedForOversizedTable = false;
-      }
+      if (fenced || failed || composing || !view) return false;
+      resumeDomObserverIfPaused();
       if (command === 'delete') {
         lastInputType = 'deleteContentBackward';
       } else if (command !== 'undo' && command !== 'redo') {
@@ -1642,7 +1686,7 @@ export function installFastraVisualBridge() {
       return bookmarks.delete(key);
     },
     insertBookmarked(key, html, atoms, transaction, imageSources, singleLine = false, imageEnding = null) {
-      if (fenced || !view) return false;
+      if (fenced || failed || composing || !view) return false;
       const saved = bookmarks.get(key);
       bookmarks.delete(key);
       if (!saved || saved.base !== serialize() || !currentClipboardSelection(saved)) return false;
@@ -1661,7 +1705,7 @@ export function installFastraVisualBridge() {
 
       const sel = Selection.fromJSON(view.state.doc, saved.selectionJSON);
       if (isCodeSelection(sel)) {
-        if (transaction) return false;
+        if (transaction && imageSources?.length) return false;
         return insertPlainText(sel, clipboardPlainText(html));
       }
       const slice = buildPasteSlice(template.innerHTML);
@@ -1802,7 +1846,7 @@ export function installFastraVisualBridge() {
     insertClipboardText(key, text) {
       const saved = bookmarks.get(key);
       bookmarks.delete(key);
-      if (fenced || !view || !saved || saved.base !== serialize() || !currentClipboardSelection(saved)) return false;
+      if (fenced || failed || composing || !view || !saved || saved.base !== serialize() || !currentClipboardSelection(saved)) return false;
       const sel = Selection.fromJSON(view.state.doc, saved.selectionJSON);
       if (!text) return false;
       if (!view.state.selection.eq(sel)) view.dispatch(view.state.tr.setSelection(sel));
@@ -1897,7 +1941,13 @@ export function installFastraVisualBridge() {
       return diagnostics.compareSave(html);
     },
     inspectAppearance(expectedSession, expectedRevision, html) {
-      if (expectedSession !== session || revision !== expectedRevision) return null;
+      if (
+        expectedSession !== session ||
+        revision !== expectedRevision ||
+        composing ||
+        pendingEmitTimer !== null ||
+        docMutationVersion !== publishedMutationVersion
+      ) return null;
       return diagnostics.inspect(html);
     },
     diagnosticReport(includeContent = false) {
@@ -1926,6 +1976,7 @@ export function installFastraVisualBridge() {
         // Exakten EditorState inkl. Doc, Selection & History atomar wiederherstellen (Astra #14).
         view.updateState(lastPreOpSnapshot.editorState);
         emittedEditorState = view.state;
+        publishedMutationVersion = docMutationVersion;
         base = previous;
         lastImageTransactions = JSON.stringify(collectOrderedImageTransactions(view.state.doc));
         lastPreOpSnapshot = null;

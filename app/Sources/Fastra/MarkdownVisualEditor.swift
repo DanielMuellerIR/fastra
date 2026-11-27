@@ -268,6 +268,26 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
     }
 
     private var activeActionIDs: Set<String> = []
+    private var pendingClipboardCutCount = 0
+    private var clipboardCutWaiters: [() -> Void] = []
+
+    private func finishPendingClipboardCut() {
+        guard pendingClipboardCutCount > 0 else { return }
+        pendingClipboardCutCount -= 1
+        if pendingClipboardCutCount == 0 {
+            let waiters = clipboardCutWaiters
+            clipboardCutWaiters.removeAll()
+            waiters.forEach { $0() }
+        }
+    }
+
+    private func resetPendingClipboardCuts() {
+        pendingClipboardCutCount = 0
+        guard !clipboardCutWaiters.isEmpty else { return }
+        let waiters = clipboardCutWaiters
+        clipboardCutWaiters.removeAll()
+        waiters.forEach { $0() }
+    }
     enum SaveCheck: String {
         case ok, text, format, breaks, unavailable
     }
@@ -378,6 +398,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         let full: [String: Any]
     }
     private var swiftDiagnosticEvents: [SwiftDiagnosticEvent] = []
+    private var previousSessionSummary: [String: Any]?
 
     private func recordSwiftEvent(_ kind: String, details: [String: Any] = [:], fullOnlyDetails: [String: Any] = [:]) {
         var redactedEntry: [String: Any] = [
@@ -390,7 +411,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         var fullEntry = redactedEntry
         for (key, value) in fullOnlyDetails { fullEntry[key] = value }
         swiftDiagnosticEvents.append(SwiftDiagnosticEvent(redacted: redactedEntry, full: fullEntry))
-        if swiftDiagnosticEvents.count > 80 { swiftDiagnosticEvents.removeFirst() }
+        if swiftDiagnosticEvents.count > 120 { swiftDiagnosticEvents.removeFirst() }
     }
 
     func scheduleLiveAppearanceCheck() {
@@ -421,26 +442,39 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         }
         let candidate = tab.textForSaving(tab.content)
         let url = tab.url
+        let contentRevision = tab.contentRevision
         DispatchQueue.global(qos: .utility).async { [weak self] in
             let html = MarkdownVisualDocument.render(candidate, documentURL: url).fragment.html
             DispatchQueue.main.async {
                 guard let self, self.isCurrentState(state),
                       self.activeActionIDs.isEmpty, !self.reconcilingImages,
                       let workspace = self.workspace,
-                      workspace.tabs.contains(where: { $0.id == state.tabID && $0.documentID == state.documentID && $0.content.utf8.elementsEqual(self.markdown.utf8) })
+                      workspace.tabs.contains(where: { $0.id == state.tabID && $0.documentID == state.documentID && $0.contentRevision == contentRevision && $0.content.utf8.elementsEqual(self.markdown.utf8) })
                 else { return }
                 web.callAsyncJavaScript(
                     "return window.fastraVisual.inspectAppearance(session, revision, html);",
                     arguments: ["session": requestSession, "revision": expectedRevision, "html": html],
                     in: nil, in: .page
                 ) { [weak self] result in
-                    guard let self, self.isCurrentState(state) else { return }
+                    guard let self, self.isCurrentState(state),
+                          let workspace = self.workspace,
+                          let currentTab = workspace.tabs.first(where: { $0.id == state.tabID && $0.documentID == state.documentID && $0.contentRevision == contentRevision && $0.content.utf8.elementsEqual(self.markdown.utf8) })
+                    else { return }
                     guard case .success(let value) = result, let body = value as? [String: Any],
                           let rawOutcome = body["outcome"] as? String,
                           let outcome = SaveCheck(rawValue: rawOutcome) else { return }
                     self.lastLiveCheckedState = (request, expectedRevision)
-                    self.recordSwiftEvent("liveCheck", details: ["outcome": outcome.rawValue])
+                    var eventDetails: [String: Any] = ["outcome": outcome.rawValue]
+                    if let diff = body["diff"] as? [String: Any] {
+                        for key in ["kind", "offset", "liveLength", "savedLength", "liveBlockCount", "savedBlockCount", "liveCount", "savedCount"] {
+                            if let v = diff[key] { eventDetails[key] = v }
+                        }
+                    }
+                    self.recordSwiftEvent("liveCheck", details: eventDetails)
                     if outcome == .ok {
+                        if let existing = workspace.visualSaveCheck(for: currentTab, candidate: candidate), existing != .ok {
+                            workspace.clearVisualSaveCheck(for: state.tabID)
+                        }
                         self.collectDiagnosticReport(includeContent: false) { [weak self] redacted, eventCount in
                             guard let self, self.isCurrentState(state), let workspace = self.workspace else { return }
                             MainActor.assumeIsolated {
@@ -453,7 +487,19 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                         }
                     } else {
                         self.captureFrozenDiagnostics { [weak self] redacted, full, eventCount in
-                            guard let self, self.isCurrentState(state), let workspace = self.workspace else { return }
+                            guard let self, self.isCurrentState(state),
+                                  let workspace = self.workspace,
+                                  workspace.tabs.contains(where: { $0.id == state.tabID && $0.documentID == state.documentID && $0.contentRevision == contentRevision })
+                            else { return }
+                            workspace.recordVisualSaveCheck(
+                                tabID: state.tabID,
+                                documentID: state.documentID,
+                                contentRevision: contentRevision,
+                                candidate: candidate,
+                                outcome: outcome,
+                                redactedDiagnostic: redacted,
+                                fullDiagnostic: full
+                            )
                             MainActor.assumeIsolated {
                                 workspace.markdownVisualDiagnostics.recordLiveCheck(
                                     outcome: outcome, revision: expectedRevision,
@@ -491,7 +537,8 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
             "hasDocumentURL": documentURL != nil
         ]
         guard let web else {
-            let payload: [String: Any] = ["fastra": contextInfo, "swiftEvents": swiftLog]
+            var payload: [String: Any] = ["fastra": contextInfo, "swiftEvents": swiftLog]
+            if let previousSessionSummary { payload["previousSession"] = previousSessionSummary }
             completion(Self.prettyJSONString(payload), swiftLog.count)
             return
         }
@@ -499,8 +546,9 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
             "return window.fastraVisual?.diagnosticReport ? window.fastraVisual.diagnosticReport(includeContent) : null;",
             arguments: ["includeContent": includeContent],
             in: nil, in: .page
-        ) { result in
+        ) { [weak self] result in
             var payload: [String: Any] = ["fastra": contextInfo, "swiftEvents": swiftLog]
+            if let previous = self?.previousSessionSummary { payload["previousSession"] = previous }
             var eventCount = swiftLog.count
             if case .success(let value) = result, let jsReport = value as? [String: Any] {
                 payload["editor"] = jsReport
@@ -768,6 +816,13 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         invalidateForSourceReplacement()
     }
 
+    func adoptInitialDocumentURL(_ url: URL) {
+        guard ready, documentURL == nil else { return }
+        documentURL = url
+        style = "\(currentFontName)|\(currentFontSize)|\(currentDarkMode)|\(url.path)"
+        recordSwiftEvent("adoptURL")
+    }
+
     func relocateDocument(from previous: URL, to url: URL) {
         guard documentURL == previous else { return }
         documentURL = url
@@ -824,6 +879,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         liveCheckWorkItem?.cancel()
         liveCheckWorkItem = nil
         lastLiveCheckedState = nil
+        resetPendingClipboardCuts()
         historyState = HistoryState()
         clearDiagnostics()
         discardImageUndo()
@@ -1057,6 +1113,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         let sourceURL = documentURL, request = generation, capturedSession = session
         let imageURLs = assets.imageURLSnapshot()
         let clipboardRequest = MarkdownPasteboard.beginCopy(to: pasteboard)
+        if cut { pendingClipboardCutCount += 1 }
         clipboardQueue.async { [self] in
             let result = Result { () -> (Data, MarkdownClipboardImages.Transport) in
                 let images = try sourceURL.map { try MarkdownSaveAs.clipboardImages(content: copied, sourceURL: $0) } ?? [:]
@@ -1079,9 +1136,18 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                 }
                 // Die Kopie gehört der Zwischenablage; nur das Ausschneiden
                 // bleibt an den noch gültigen Quell-DOM gebunden.
-                guard generation == request, session == capturedSession else { return }
-                web?.callAsyncJavaScript("return window.fastraVisual.completeClipboard(bookmark, cut, succeeded);",
-                    arguments: ["bookmark": bookmark, "cut": cut, "succeeded": published], in: nil, in: .page) { _ in }
+                guard generation == request, session == capturedSession else {
+                    if cut { finishPendingClipboardCut() }
+                    return
+                }
+                if let web {
+                    web.callAsyncJavaScript("return window.fastraVisual.completeClipboard(bookmark, cut, succeeded);",
+                        arguments: ["bookmark": bookmark, "cut": cut, "succeeded": published], in: nil, in: .page) { [weak self] _ in
+                        if cut { self?.finishPendingClipboardCut() }
+                    }
+                } else if cut {
+                    finishPendingClipboardCut()
+                }
             }
         }
     }
@@ -1095,6 +1161,18 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
     func synchronize(holdingInput: Bool, checkingSave: Bool = false, relocatedMarkdown: String? = nil,
                      warnOnComposition: Bool = true,
                      _ completion: @escaping (Bool, ActionHold?) -> Void) {
+        if pendingClipboardCutCount > 0 {
+            let request = generation, capturedSession = session
+            clipboardCutWaiters.append { [weak self] in
+                guard let self, self.generation == request, self.session == capturedSession else {
+                    completion(false, nil)
+                    return
+                }
+                self.synchronize(holdingInput: holdingInput, checkingSave: checkingSave,
+                                 relocatedMarkdown: relocatedMarkdown, warnOnComposition: warnOnComposition, completion)
+            }
+            return
+        }
         if reconcilingImages {
             let request = generation, capturedSession = session
             imageReconciliationWaiters.append { [weak self] originGeneration, originSession, accepted in
@@ -1304,6 +1382,15 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
     func invalidateForSourceReplacement() {
         liveCheckWorkItem?.cancel()
         liveCheckWorkItem = nil
+        resetPendingClipboardCuts()
+        if ready {
+            previousSessionSummary = [
+                "generation": generation,
+                "acceptedInputRevision": acceptedInputRevision,
+                "markdownLength": markdown.count,
+                "hadDocumentURL": documentURL != nil
+            ]
+        }
         // Zuerst Generation erhöhen, damit verzögerte Diagnostik-Leerung und
         // asynchrone Callbacks exakt gegen dieselbe neue Generation prüfen.
         generation &+= 1
@@ -1620,21 +1707,27 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                         // Neue IDs sind von den Originalblöcken unabhängig.
                         // Der Einfügeschritt selbst bleibt ein WebKit-Undo-Schritt.
                         let html = visual.blocks.map(\.html).joined()
-                        let transactionID = UUID().uuidString
                         let created = prepared.createdImages
+                        let transactionID: String?
                         if !created.isEmpty {
-                            self.imageTransactions[transactionID] = ImageTransaction(effect: MarkdownImageUndoSideEffect(images: created, historyLost: { [weak self] in self?.resetImageUndoHistory() }, removalHooks: self.imageRemovalHooks))
+                            let id = UUID().uuidString
+                            self.imageTransactions[id] = ImageTransaction(effect: MarkdownImageUndoSideEffect(images: created, historyLost: { [weak self] in self?.resetImageUndoHistory() }, removalHooks: self.imageRemovalHooks))
+                            transactionID = id
+                        } else {
+                            transactionID = nil
                         }
                         let createdURLs = Set(created.map(\.fileURL))
                         let imageSources = visual.fragment.imageURLs.filter { createdURLs.contains($0.value) }
                             .map { "fastra-preview://image/" + $0.key }
                         web.callAsyncJavaScript("return window.fastraVisual.insertBookmarked(bookmark, html, atoms, transaction, imageSources, singleLine);",
-                            arguments: ["bookmark": bookmark, "html": html, "atoms": visual.opaqueSources, "transaction": transactionID, "imageSources": imageSources, "singleLine": !prepared.content.contains("\n") && !prepared.content.contains("\r")], in: nil, in: .page) { result in
+                            arguments: ["bookmark": bookmark, "html": html, "atoms": visual.opaqueSources, "transaction": transactionID ?? NSNull(), "imageSources": imageSources, "singleLine": !prepared.content.contains("\n") && !prepared.content.contains("\r")], in: nil, in: .page) { result in
                                 if case .success(let inserted) = result, inserted as? Bool == true {
                                     prepared.commit(); finish(true)
                                 }
                                 else {
-                                    self.imageTransactions.removeValue(forKey: transactionID)?.effect.discard()
+                                    if let transactionID {
+                                        self.imageTransactions.removeValue(forKey: transactionID)?.effect.discard()
+                                    }
                                     prepared.rollbackReporting(warningHandler: workspace.saveSafetyWarningHandler) {
                                         if isCurrent() {
                                             workspace.saveSafetyWarningHandler(L10n.string("Einfügen abgebrochen"),

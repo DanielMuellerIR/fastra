@@ -7,6 +7,15 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.243.2] — 2026-11-27
+
+### Behoben
+
+- WYSIWYG: Leere und nur aus Leerzeichen bestehende Absätze in mehrblockigen Dokumenten sowie beim Enter am Absatzanfang, per `Shift+Return` vor Umbrüchen, beim Klartext-Einfügen und innerhalb von Zitaten oder Listeneinträgen bleiben nun als sichtbare Leerzeilen erhalten und werden beim ersten Speichern und erneuten Öffnen nicht mehr still entfernt; die Speicherprüfung erkennt zudem fehlende leere Absätze, abweichende Links, Checkbox-Zustände und Startnummern geordneter Listen.
+- macOS: Das kurzzeitige Aufblitzen des Speicherwarnbanners während schnellen Tippens ist behoben — `inspectAppearance` prüft nun nicht mehr gegen veraltete DOM-/Debounce-Stände zwischen zwei Revisionen.
+- macOS: Beim ersten Speichern einer neuen unbenannten Markdown-Datei ohne lokale Bilder übernimmt der Editor die Ziel-URL direkt in die laufende Sitzung, sodass der bisherige Undo-/Redo-Verlauf erhalten bleibt.
+- WYSIWYG (Brücke & Befehle): Auswahl-Synchronisation am Blockende vor `<br>`/`<img>`/Atomen, gemischte Liste+Absatz-Umwandlung und Mehrfachauswahl-Lift in Listen, Zitat-Umwandlung ganzer Listen, geschützte Inline-Code-Spans um Atome, Blockanfangs- und Link-Entity-Escaping, stabile Referenzdefinitionsreihenfolge, Viewport-Wiederherstellung nach initialem Fokus, Codeblock-Einfügen ohne Bilder, Cut-vor-Save-Synchronisation sowie Speicherprüfungen für Hintergrundtabs stabilisiert; Langzeit- und WebKit-Sitzungstests ergänzt.
+
 ## [v1.243.1] — 2026-11-27
 
 ### Behoben
