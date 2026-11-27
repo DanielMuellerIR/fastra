@@ -255,13 +255,15 @@ struct SerialRunnerIntegrationTests {
         let result = try fixture.run()
         #expect(result.status == 0, "Runner-Ausgabe: \(result.output)")
         let calls = try fixture.calls()
-        #expect(calls.count == 2)
-        #expect(calls[0].arguments
-                == ["test", "--parallel", "--skip",
-                    "[Gg]itIntegration|[Ss]erialRunnerIntegration|MarkdownVisualTests"])
-        #expect(calls[1].arguments
-                == ["test", "--no-parallel", "--filter",
-                    "[Gg]itIntegration|[Ss]erialRunnerIntegration|MarkdownVisualTests"])
+        try #require(calls.count == 2)
+        let marker = try #require(calls[0].arguments.dropFirst(3).first)
+        #expect(calls[0].arguments == ["test", "--parallel", "--skip", marker])
+        #expect(calls[1].arguments == ["test", "--no-parallel", "--filter", marker])
+        for test in ["GitIntegrationTests/fetch", "ImageSerialRunnerIntegrationTests/undo",
+                     "MarkdownVisualTests/save", "MarkdownVisualLongSessionTests/save"] {
+            #expect(test.range(of: marker, options: .regularExpression) != nil, "\(test)")
+        }
+        #expect("MarkdownRenderingTests/parse".range(of: marker, options: .regularExpression) == nil)
         #expect(calls[0].tmp == calls[1].tmp)
         #expect(calls[0].cf == calls[1].cf)
         #expect(result.output.contains(
@@ -342,19 +344,20 @@ struct SerialRunnerIntegrationTests {
 
         #expect(result.status == 0, "Runner-Ausgabe: \(result.output)")
         let calls = try fixture.calls()
-        #expect(calls.count == 2)
+        try #require(calls.count == 2)
+        let marker = try #require(calls[0].arguments.dropFirst(3).first)
         #expect(calls[0].arguments == [
             "test", "--parallel", "--skip",
-            "[Gg]itIntegration|[Ss]erialRunnerIntegration|MarkdownVisualTests",
+            marker,
             "--filter", "(?<probe>SelfTestOutcomeTests)",
             "--filter", "(?<probe>UnitTestRunnerTests)",
         ])
         #expect(calls[1].arguments == [
             "test", "--no-parallel", "--filter",
-            "^(?=.*(?:[Gg]itIntegration|[Ss]erialRunnerIntegration|MarkdownVisualTests))"
+            "^(?=.*(?:\(marker)))"
                 + "(?=.*(?:(?<probe>SelfTestOutcomeTests))).*$",
             "--filter",
-            "^(?=.*(?:[Gg]itIntegration|[Ss]erialRunnerIntegration|MarkdownVisualTests))"
+            "^(?=.*(?:\(marker)))"
                 + "(?=.*(?:(?<probe>UnitTestRunnerTests))).*$",
         ])
     }
