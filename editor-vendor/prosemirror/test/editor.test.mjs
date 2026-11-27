@@ -382,7 +382,7 @@ test('inline formatting protects math atoms, space-padding flanking preserves sp
   assert.ok(md.includes('==d== e'), `Highlight should preserve spaces around marks: ${md}`);
   assert.ok(md.includes('FASTRANBSPTOKEN0X&nbsp;'), `Literal token overwritten: ${md}`);
   assert.ok(md.includes('<https://example.com/a b>'), `Space URL must use angle delimiters: ${md}`);
-  assert.ok(md.includes('\\&copy;'), `Entity-like sequence in title must be escaped: ${md}`);
+  assert.ok(md.includes('&amp;copy;'), `Entity-like sequence in title must be escaped: ${md}`);
 
   // Nested mark ordering (**==Marked==**) + code preserveWhitespace
   const nestedDoc = schema.nodes.doc.create(null, parseHTMLToNodes('<p><strong><mark>Marked</mark></strong></p><p><code>A<br>  <br>B</code></p>', { schema, ownerDocument: document }));
@@ -773,5 +773,5 @@ test('edited Markdown preserves literal break markers, HTML attributes and table
   assert.equal(serializeBlockNode(blocks[2]), '<abbr title="one">first</abbr><abbr title="two">second</abbr>');
   const header = serializeBlockNode(blocks[3]).split('\n')[0];
   assert.match(header, /\[link\]\(https:\/\/example\.test\/a\\\|b "a\\\|b"\)/);
-  assert.match(header, /!\[a\\\|b\]\(<a\\\|b\.png> "\\&copy;"\)/);
+  assert.match(header, /!\[a\\\|b\]\(<a\\\|b\.png> "&amp;copy;"\)/);
 });

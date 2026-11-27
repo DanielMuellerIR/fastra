@@ -13845,7 +13845,7 @@
     let href = String(rawHref || "");
     if (!href) return "";
     if (tableCell) href = escapeTablePipes(href).replace(/\r/g, "%0D").replace(/\n/g, "%0A");
-    href = href.replace(/&(?=[A-Za-z0-9#]+;)/g, "\\&");
+    href = href.replace(/&/g, "&amp;");
     if (wrap2 || /[\s()<>[\]\u0000-\u001f]/.test(href)) {
       return `<${href.replace(/</g, "%3C").replace(/>/g, "%3E")}>`;
     }
@@ -13853,7 +13853,7 @@
   }
   function formatLinkTitle(rawTitle, tableCell = false) {
     if (rawTitle == null || rawTitle === "") return "";
-    let escaped = String(rawTitle).replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/&(?=[A-Za-z0-9#]+;)/g, "\\&");
+    let escaped = String(rawTitle).replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/&/g, "&amp;");
     if (tableCell) escaped = escapeTablePipes(escaped).replace(/\r/g, "&#13;").replace(/\n/g, "&#10;");
     return ` "${escaped}"`;
   }
@@ -16873,7 +16873,9 @@ $$`;
         const startAttr = node.getAttribute("start")?.trim();
         listStarts.push(startAttr && /^[+-]?\d+$/.test(startAttr) ? Number(startAttr) : 1);
       }
-      if (tag === "A" && node.hasAttribute("href")) href = node.getAttribute("href");
+      if (tag === "A" && node.hasAttribute("href")) {
+        href = node.getAttribute("href").replace(/[ \u0080-\uD7FF\uE000-\u{10FFFF}]/gu, encodeURIComponent);
+      }
       if (node.classList?.contains("fastra-pm-li-content") || tag === "DIV" && node.classList?.contains("ProseMirror")) {
         for (const child of node.childNodes) visit(child, style, tableCell, href);
         return;
@@ -16941,6 +16943,22 @@ $$`;
     boundary();
     return { text, formats, breaks, blockTypes, links, tasks, listStarts };
   }
+  function sameLinks(live, saved) {
+    const liveLinks = live.links || [];
+    let next = 0;
+    for (const [start, end, href] of saved.links || []) {
+      const current = liveLinks[next];
+      if (current?.[0] === start && current[1] === end && current[2] === href) {
+        next++;
+        continue;
+      }
+      const address = saved.text.slice(start, end).replace(/^mailto:/, "");
+      if (current && current[0] < end || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address) || href !== `mailto:${address}`) {
+        return false;
+      }
+    }
+    return next === liveLinks.length;
+  }
   function diffAppearance(live, saved, { includeContent = true } = {}) {
     if (live.text !== saved.text) {
       let at = 0;
@@ -16979,7 +16997,7 @@ $$`;
         }
       };
     }
-    if (JSON.stringify(live.links || []) !== JSON.stringify(saved.links || [])) {
+    if (!sameLinks(live, saved)) {
       return {
         outcome: "format",
         diff: {

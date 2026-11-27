@@ -224,7 +224,7 @@ function formatLinkDestination(rawHref, tableCell = false, wrap = false) {
   let href = String(rawHref || '');
   if (!href) return '';
   if (tableCell) href = escapeTablePipes(href).replace(/\r/g, '%0D').replace(/\n/g, '%0A');
-  href = href.replace(/&(?=[A-Za-z0-9#]+;)/g, '\\&');
+  href = href.replace(/&/g, '&amp;');
   if (wrap || /[\s()<>[\]\u0000-\u001f]/.test(href)) {
     return `<${href.replace(/</g, '%3C').replace(/>/g, '%3E')}>`;
   }
@@ -233,12 +233,12 @@ function formatLinkDestination(rawHref, tableCell = false, wrap = false) {
 
 function formatLinkTitle(rawTitle, tableCell = false) {
   if (rawTitle == null || rawTitle === '') return '';
-  // Backslash, Anführungszeichen und HTML-Entity-ähnliche Sequenzen maskieren,
-  // damit z. B. `title="&copy;"` beim Wiederöffnen wörtlich bleibt (Sol #16).
+  // cmark dekodiert Entities vor Backslash-Escapes. Ein Literal wie "&copy;"
+  // muss deshalb als "&amp;copy;" in den Markdown-Quelltext.
   let escaped = String(rawTitle)
     .replace(/\\/g, '\\\\')
     .replace(/"/g, '\\"')
-    .replace(/&(?=[A-Za-z0-9#]+;)/g, '\\&');
+    .replace(/&/g, '&amp;');
   if (tableCell) escaped = escapeTablePipes(escaped).replace(/\r/g, '&#13;').replace(/\n/g, '&#10;');
   return ` "${escaped}"`;
 }

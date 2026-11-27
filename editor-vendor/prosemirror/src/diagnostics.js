@@ -210,7 +210,11 @@ export function saveAppearance(container, inputType = '') {
       const startAttr = node.getAttribute('start')?.trim();
       listStarts.push(startAttr && /^[+-]?\d+$/.test(startAttr) ? Number(startAttr) : 1);
     }
-    if (tag === 'A' && node.hasAttribute('href')) href = node.getAttribute('href');
+    if (tag === 'A' && node.hasAttribute('href')) {
+      // Der Renderer kodiert Leerzeichen und Unicode in URLs als UTF-8.
+      // Bereits kodierte Trennzeichen wie %26 bleiben unverändert.
+      href = node.getAttribute('href').replace(/[ \u0080-\uD7FF\uE000-\u{10FFFF}]/gu, encodeURIComponent);
+    }
     if (node.classList?.contains('fastra-pm-li-content') || (tag === 'DIV' && node.classList?.contains('ProseMirror'))) {
       for (const child of node.childNodes) visit(child, style, tableCell, href);
       return;
@@ -294,6 +298,26 @@ export function saveAppearance(container, inputType = '') {
   return { text, formats, breaks, blockTypes, links, tasks, listStarts };
 }
 
+function sameLinks(live, saved) {
+  const liveLinks = live.links || [];
+  let next = 0;
+  for (const [start, end, href] of saved.links || []) {
+    const current = liveLinks[next];
+    if (current?.[0] === start && current[1] === end && current[2] === href) {
+      next++;
+      continue;
+    }
+    // GFM kann beim Rendern aus wörtlichem Mailtext einen Link auf genau
+    // dieselbe Adresse machen. Geänderte oder verschwundene Links bleiben Fehler.
+    const address = saved.text.slice(start, end).replace(/^mailto:/, '');
+    if ((current && current[0] < end) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address) ||
+        href !== `mailto:${address}`) {
+      return false;
+    }
+  }
+  return next === liveLinks.length;
+}
+
 /**
  * Vergleicht zwei Erscheinungsbilder. Abweichende Blocktypen (H1-H6, Listen,
  * Zitate, Codeblöcke) liefern wie vom Schema/Vertrag gefordert `outcome: 'format'`.
@@ -336,7 +360,7 @@ export function diffAppearance(live, saved, { includeContent = true } = {}) {
       }
     };
   }
-  if (JSON.stringify(live.links || []) !== JSON.stringify(saved.links || [])) {
+  if (!sameLinks(live, saved)) {
     return {
       outcome: 'format',
       diff: {

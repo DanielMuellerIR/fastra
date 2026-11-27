@@ -7,6 +7,12 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.243.4] — 2026-11-27
+
+### Behoben
+
+- WYSIWYG erhält benannte und numerische HTML-Entitäten in Link- und Bildzielen sowie Titeln. Die Speicherprüfung akzeptiert UTF-8-kodierte Darstellungen desselben Ziels und automatisch erkannte Mailadressen.
+
 ## [v1.243.3] — 2026-11-27
 
 ### Behoben

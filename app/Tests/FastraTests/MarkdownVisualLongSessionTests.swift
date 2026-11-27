@@ -107,8 +107,9 @@ struct MarkdownVisualLongSessionTests {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let file = directory.appendingPathComponent("Links.md")
-        let source = "[a **b** c](https://example.com)\n\nAdresse:\n"
-        let urlText = "http://example.com/path?a=one_two&b=two"
+        let source = "[a **b** c][ref]\n\n[ref]: <./other%20document.md?q=one&amp;b=&#169;>\n\nAdresse:\n"
+        let urlText = "http://example.com/path?a=one_two&named=&copy;&decimal=&#169;&hex=&#x1F680;&amp;"
+        let pastedTarget = "https://example.com/path?named=&copy;&decimal=&#169;&hex=&#x1F680;&amp;"
         try source.write(to: file, atomically: true, encoding: .utf8)
         let (workspace, coordinator, web, window, _, _) = try await openVisualEditor(source, documentURL: file)
         defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
@@ -128,16 +129,26 @@ struct MarkdownVisualLongSessionTests {
             const clipboardData = new DataTransfer();
             clipboardData.setData('text/plain', ' ' + urlText);
             root.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }));
-            """, arguments: ["urlText": urlText], in: nil, in: .page)
+            fastraVisual.command('insertParagraph');
+            const link = document.createElement('a');
+            link.setAttribute('href', pastedTarget);
+            link.setAttribute('title', '&lt; &copy; &#169; &#x1F680;');
+            link.innerHTML = 'd <strong>e</strong> f';
+            const richData = new DataTransfer();
+            richData.setData('text/html', link.outerHTML);
+            root.dispatchEvent(new ClipboardEvent('paste', { clipboardData: richData, bubbles: true, cancelable: true }));
+            """, arguments: ["urlText": urlText, "pastedTarget": pastedTarget], in: nil, in: .page)
         try #require(await waitUntil { workspace.activeTab?.isDirty == true })
         workspace.saveActiveTab()
         try #require(await waitUntil { workspace.activeTab?.isDirty == false || warning != nil })
         #expect(warning == nil)
         let saved = try String(contentsOf: file, encoding: .utf8)
-        #expect(saved.contains("http\\://example.com/path?a=one\\_two&amp;b=two"))
+        #expect(saved.contains("[a **b** c][ref]"))
         let rendered = MarkdownVisualDocument.render(saved, documentURL: file).fragment.html
-        #expect(rendered.contains("Adresse: http://example.com/path?a=one_two&amp;b=two"))
-        #expect(rendered.contains("<a href=\"https://example.com\">a <strong>b</strong> c</a>"))
+        #expect(rendered.contains("Adresse: " + urlText.replacingOccurrences(of: "&", with: "&amp;")))
+        #expect(rendered.contains("<a href=\"./other%20document.md?q=one&amp;b=%C2%A9\">a <strong>b</strong> c</a>"))
+        #expect(rendered.contains("href=\"" + pastedTarget.replacingOccurrences(of: "&", with: "&amp;") + "\""))
+        #expect(rendered.contains("title=\"&amp;lt; &amp;copy; &amp;#169; &amp;#x1F680;\""))
         withExtendedLifetime(coordinator) {}
     }
 

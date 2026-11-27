@@ -612,7 +612,7 @@ test('Suite C: Targeted unit regressions for serializer, parser, commands, diagn
     const escMd = serializeDocument(escDoc, {});
     assert.ok(escMd.includes(' \\# NotHeading'), escMd);
     assert.ok(escMd.includes('&#32;   notCode'), escMd);
-    assert.ok(escMd.includes('\\&copy;'), escMd);
+    assert.ok(escMd.includes('&amp;copy;'), escMd);
 
     const quoted = parseHTMLToNodes('<ul><li>One</li><li>Two</li></ul>', { schema, ownerDocument: document });
     const quoteView = makeView(document.createElement('div'), schema.nodes.doc.create(null, quoted));
@@ -654,6 +654,12 @@ test('Suite C: Targeted unit regressions for serializer, parser, commands, diagn
     linkB.innerHTML = '<p><a href="/x">a <strong>b</strong> c</a></p>';
     assert.equal(diffAppearance(saveAppearance(linkA), saveAppearance(linkB)).outcome, 'ok');
     linkB.innerHTML = '<p>a <strong><a href="/x">b</a></strong> c</p>';
+    assert.equal(diffAppearance(saveAppearance(linkA), saveAppearance(linkB)).diff.kind, 'links');
+
+    linkA.innerHTML = '<p>Mail: address@example.test</p>';
+    linkB.innerHTML = '<p>Mail: <a href="mailto:address@example.test">address@example.test</a></p>';
+    assert.equal(diffAppearance(saveAppearance(linkA), saveAppearance(linkB)).outcome, 'ok');
+    linkB.querySelector('a').setAttribute('href', 'mailto:other@example.test');
     assert.equal(diffAppearance(saveAppearance(linkA), saveAppearance(linkB)).diff.kind, 'links');
   }
 
