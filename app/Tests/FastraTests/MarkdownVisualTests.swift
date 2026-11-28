@@ -163,6 +163,9 @@ private final class VisualImageReferenceFixture {
 
 @Suite("Markdown-WYSIWYG", .serialized)
 struct MarkdownVisualTests {
+    // Die verdeckten Testfenster können für eine WebKit-Antwort so lange
+    // wie beim ersten Laden brauchen, besonders auf dem Hosted-Runner.
+    private let visualCloseTimeout: TimeInterval = 12
 
     @Test("Wiederholte Texteingaben erhalten Absatzabstände und Dateiende", arguments: ["", "\n", "\n\n", "\r\n", "\r\n\r\n"])
     @MainActor
@@ -196,7 +199,7 @@ struct MarkdownVisualTests {
             #expect(try Data(contentsOf: file) == Data(expected.utf8))
             let id = try #require(workspace.activeTabID)
             workspace.closeTab(id: id)
-            try #require(await waitUntil { !workspace.tabs.contains { $0.id == id } })
+            try #require(await waitUntil(timeout: visualCloseTimeout) { !workspace.tabs.contains { $0.id == id } })
         }
     }
 
@@ -328,8 +331,7 @@ struct MarkdownVisualTests {
         var closeConfirmationRequested = false
         workspace.confirmCloseHandler = { _ in closeConfirmationRequested = true; return .cancel }
         workspace.closeTab(id: tabID)
-        // Wie beim ersten Laden wartet auch das Schließen auf die verdeckte WebView.
-        try #require(await waitUntil(timeout: 12) {
+        try #require(await waitUntil(timeout: visualCloseTimeout) {
             !workspace.tabs.contains { $0.id == tabID } || closeConfirmationRequested || failure != nil
         })
         try #require(!closeConfirmationRequested)
@@ -373,7 +375,7 @@ struct MarkdownVisualTests {
         #expect(try await web.evaluateJavaScript("document.querySelector('mark')?.textContent") as? String == "Ergebnis")
         workspace.confirmCloseHandler = { _ in .save }
         workspace.closeTab(id: tabID)
-        try #require(await waitUntil { warnings.count == 2 || !workspace.tabs.contains { $0.id == tabID } })
+        try #require(await waitUntil(timeout: visualCloseTimeout) { warnings.count == 2 || !workspace.tabs.contains { $0.id == tabID } })
         #expect(warnings == [.format, .format])
         #expect(workspace.activeTabID == tabID)
         workspace.markdownSaveWarningHandler = { check, canSave in
@@ -381,13 +383,14 @@ struct MarkdownVisualTests {
             return canSave
         }
         workspace.saveActiveTab()
-        try #require(await waitUntil { writes == 1 })
+        try #require(await waitUntil { workspace.activeTab?.acknowledgedVisualSave != nil })
+        try #require(writes == 1)
         workspace.confirmCloseHandler = { _ in
             Issue.record("Unveränderter, ausdrücklich gespeicherter Stand fragt erneut nach")
             return .cancel
         }
         workspace.closeTab(id: tabID)
-        try #require(await waitUntil { !workspace.tabs.contains { $0.id == tabID } })
+        try #require(await waitUntil(timeout: visualCloseTimeout) { !workspace.tabs.contains { $0.id == tabID } })
         #expect(warnings == [.format, .format, .format])
         #expect(writes == 1)
     }
@@ -613,10 +616,7 @@ struct MarkdownVisualTests {
         let closeGeneration = coordinator.generation
         let closeStarted = Date()
         workspace.closeTab(id: id)
-        // Die verdeckte WebView synchronisiert vor dem Schließen erneut mit
-        // WebKit. Auf dem Hosted-Runner dauern einzelne Schließvorgänge über
-        // fünf Sekunden; dafür gilt dieselbe Frist wie beim initialen Laden.
-        let closed = await waitUntil(timeout: 12) { !workspace.tabs.contains { $0.id == id } }
+        let closed = await waitUntil(timeout: visualCloseTimeout) { !workspace.tabs.contains { $0.id == id } }
         let closeDiagnostic = "command=\(command) dark=\(dark) elapsed=\(Date().timeIntervalSince(closeStarted)) "
             + "closed=\(closed) confirmation=\(closeConfirmationRequested) ready=\(coordinator.ready) "
             + "dirty=\(String(describing: workspace.tabs.first { $0.id == id }?.isDirty)) warning=\(saveError ?? "none") "
@@ -3509,7 +3509,7 @@ struct MarkdownVisualTests {
         var closeConfirmationRequested = false
         target.confirmCloseHandler = { _ in closeConfirmationRequested = true; return .cancel }
         target.closeTab(id: id)
-        try #require(await waitUntil(timeout: 12) { !target.tabs.contains { $0.id == id } || closeConfirmationRequested })
+        try #require(await waitUntil(timeout: visualCloseTimeout) { !target.tabs.contains { $0.id == id } || closeConfirmationRequested })
         try #require(!closeConfirmationRequested)
 
         let saved = try Data(contentsOf: targetFile)
@@ -3893,7 +3893,7 @@ struct MarkdownVisualTests {
         try #require(await waitUntil { workspace.activeTab?.content.contains("weiter") == true })
         workspace.confirmCloseHandler = { _ in .dontSave }
         workspace.closeTab(id: id)
-        try #require(await waitUntil { !workspace.tabs.contains { $0.id == id } })
+        try #require(await waitUntil(timeout: visualCloseTimeout) { !workspace.tabs.contains { $0.id == id } })
         MarkdownVisualWebView.dismantleNSView(web, coordinator: coordinator)
         // Eine folgende JS-Antwort gibt auch dem alten Abbau-Callback Zeit.
         _ = try await web.evaluateJavaScript("document.querySelector('p')?.textContent")
