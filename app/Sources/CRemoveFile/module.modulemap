@@ -1,0 +1,4 @@
+module CRemoveFile [system] {
+    header "shim.h"
+    export *
+}

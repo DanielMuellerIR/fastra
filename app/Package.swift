@@ -39,6 +39,7 @@ let package = Package(
         .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.4"),
     ],
     targets: [
+        .systemLibrary(name: "CRemoveFile"),
         .target(name: "FastraDiffProtocol"),
         .target(name: "FastraControlProtocol"),
         .target(name: "FastraPatternSyntax"),
@@ -58,6 +59,7 @@ let package = Package(
         .executableTarget(
             name: "Fastra",
             dependencies: [
+                "CRemoveFile",
                 "FastraMarkdownMark",
                 "FastraDiffProtocol",
                 "FastraControlProtocol",

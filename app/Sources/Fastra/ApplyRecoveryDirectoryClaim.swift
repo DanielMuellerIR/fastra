@@ -1,3 +1,4 @@
+import CRemoveFile
 import Darwin
 import Foundation
 
