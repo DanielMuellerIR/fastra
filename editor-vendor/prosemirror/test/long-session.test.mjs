@@ -553,6 +553,24 @@ test('Suite C: Targeted unit regressions for serializer, parser, commands, diagn
     assert.equal(serializeDocument(nestedView.state.doc, {}), '- Parent\n- One\n- Two\n- Sibling\n\n');
     nestedView.destroy();
 
+    const tasks = parseHTMLToNodes('<ul><li data-task="checked"><input type="checkbox" checked><strong>Task</strong></li></ul><p><a href="/target">After</a></p>', { schema, ownerDocument: document });
+    const taskView = makeView(document.createElement('div'), schema.nodes.doc.create(null, tasks));
+    taskView.dispatch(taskView.state.tr.setSelection(TextSelection.create(taskView.state.doc, 3, taskView.state.doc.content.size - 1)));
+    assert.equal(executeVisualCommand(taskView, 'taskList', null, { schema }).executed, true);
+    assert.equal(serializeDocument(taskView.state.doc, {}).trim(), '**Task**\n\n[After](/target)');
+    taskView.destroy();
+
+    const crossing = parseHTMLToNodes('<ol start="7"><li>First<ul><li>Sub</li></ul></li><li>Second</li><li>Third</li></ol>', { schema, ownerDocument: document });
+    const keyView = makeView(document.createElement('div'), schema.nodes.doc.create(null, crossing));
+    keyView.state.doc.descendants((node, pos) => { if (node.isText) positions.set(node.text, pos); });
+    keyView.dispatch(keyView.state.tr.setSelection(TextSelection.create(keyView.state.doc, positions.get('Second') + 2, positions.get('Sub'))));
+    const shiftTab = new window.KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true });
+    keyView.dom.dispatchEvent(shiftTab);
+    assert.equal(shiftTab.defaultPrevented, true);
+    assert.equal(keyView.state.doc.lastChild.attrs.order, 9);
+    assert.ok(keyView.state.selection.anchor > keyView.state.selection.head);
+    keyView.destroy();
+
     const nestedOrdered = parseHTMLToNodes('<ol><li>Parent<ol start="7"><li>Seven</li><li>Eight</li><li>Nine</li></ol></li></ol>',
       { schema, ownerDocument: document });
     const nestedOrderedView = makeView(document.createElement('div'), schema.nodes.doc.create(null, nestedOrdered));

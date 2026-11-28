@@ -1451,6 +1451,7 @@ export function installFastraVisualBridge() {
         nativeActionIDs.clear();
         originals.clear();
         contexts.clear();
+        imageUrlOverrides.clear();
         unresolvedImageSources.clear();
       }
       trackUnresolvedImages = configuration.trackUnresolvedImages === true;
@@ -1591,6 +1592,12 @@ export function installFastraVisualBridge() {
         diagnostics.recordAnomaly('command-exception', `Command ${command} threw: ${err?.message || err}`, { command });
         throw err;
       }
+    },
+    adoptDocumentURL(addresses, expectedSession) {
+      if (!view || expectedSession !== session) return;
+      trackUnresolvedImages = false;
+      unresolvedImageSources.clear();
+      this.refreshImageSources(addresses, null, expectedSession);
     },
     refreshImageSources(addresses, transactions, expectedSession = session) {
       if (!view || expectedSession !== session) return;

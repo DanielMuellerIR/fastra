@@ -498,6 +498,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                                 contentRevision: contentRevision,
                                 candidate: candidate,
                                 outcome: outcome,
+                                session: state.session, inputRevision: state.revision,
                                 redactedDiagnostic: redacted,
                                 fullDiagnostic: full
                             )
@@ -674,13 +675,10 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                 let targetURLs = changes.filter { visible.contains($0.key) }
                     .reduce(into: Set<URL>()) { $0.formUnion($1.value.effect.currentURLs) }
                 for (oldToken, source) in knownImageSources {
-                    guard let imageURL = MarkdownImages.localImageURL(from: source, documentURL: url),
-                          targetURLs.contains(imageURL.canonicalFileURL) else { continue }
-                    let escaped = source.replacingOccurrences(of: "&", with: "&amp;")
-                        .replacingOccurrences(of: "\"", with: "&quot;").replacingOccurrences(of: "<", with: "&lt;")
-                    let fragment = MarkdownImages.resolve(in: "<img src=\"\(escaped)\">", relativeTo: url)
-                    guard let token = fragment.imageURLs.keys.first else { continue }
-                    refreshedURLs.merge(fragment.imageURLs) { _, new in new }
+                    guard let image = MarkdownImages.resolveSource(source, relativeTo: url),
+                          targetURLs.contains(image.url.canonicalFileURL) else { continue }
+                    let token = image.token
+                    refreshedURLs[token] = image.url
                     refreshedSources[token] = source
                     refreshedAddresses["fastra-preview://image/" + oldToken] = "fastra-preview://image/" + token
                 }
@@ -824,18 +822,15 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         recordSwiftEvent("adoptURL")
         let sources = unresolvedImageSources
         unresolvedImageSources.removeAll()
-        guard !sources.isEmpty else { return }
         let request = generation, expectedSession = session
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             var urls: [String: URL] = [:]
             var sourcesByToken: [String: String] = [:]
             var addresses: [String: String] = [:]
             for source in sources {
-                let escaped = source.replacingOccurrences(of: "&", with: "&amp;")
-                    .replacingOccurrences(of: "\"", with: "&quot;").replacingOccurrences(of: "<", with: "&lt;")
-                let image = MarkdownImages.resolve(in: "<img src=\"\(escaped)\">", relativeTo: url)
-                guard let token = image.imageURLs.keys.first else { continue }
-                urls.merge(image.imageURLs) { _, new in new }
+                guard let image = MarkdownImages.resolveSource(source, relativeTo: url) else { continue }
+                let token = image.token
+                urls[token] = image.url
                 sourcesByToken[token] = source
                 addresses[source] = "\(MarkdownPreviewAssets.scheme)://image/\(token)"
             }
@@ -846,7 +841,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                 self.assets.addImageURLs(resolved.urls)
                 self.imageSources.merge(resolved.sources) { _, new in new }
                 self.web?.callAsyncJavaScript(
-                    "return window.fastraVisual.refreshImageSources(addresses, null, session);",
+                    "return window.fastraVisual.adoptDocumentURL(addresses, session);",
                     arguments: ["addresses": resolved.addresses, "session": expectedSession],
                     in: nil, in: .page
                 ) { _ in }
@@ -1340,6 +1335,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                                 contentRevision: contentRevision,
                                 candidate: candidate,
                                 outcome: .ok,
+                                session: state.session, inputRevision: state.revision,
                                 redactedDiagnostic: nil
                             )
                             workspace?.endVisualSaveCheck(tabID: tab.id, holdID: hold.id)
@@ -1361,6 +1357,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                                     contentRevision: contentRevision,
                                     candidate: candidate,
                                     outcome: outcome,
+                                    session: state.session, inputRevision: state.revision,
                                     redactedDiagnostic: redacted,
                                     fullDiagnostic: full
                                 )

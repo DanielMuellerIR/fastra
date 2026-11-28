@@ -13725,7 +13725,7 @@
     };
   }
   function escapePlainSegment(segment, { atBlockStart: atBlockStart2 = false, tableCell = false } = {}) {
-    let out = segment.replace(/\\/g, "\\\\").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\*/g, "\\*").replace(/_/g, "\\_").replace(/`/g, "\\`").replace(/\[/g, "\\[").replace(/\]/g, "\\]").replace(/\b(https?)(?=:\/\/):/gi, "$1\\:").replace(/\b(www)\./gi, "$1\\.").replace(new RegExp("[$~]|(?<!\\\\)=(?==)|(?<==)=", "g"), "\\$&");
+    let out = segment.replace(/\\/g, "\\\\").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\*/g, "\\*").replace(/_/g, "\\_").replace(/`/g, "\\`").replace(/\[/g, "\\[").replace(/\]/g, "\\]").replace(new RegExp("(?<![a-zA-Z])(https?|ftp):(?=\\/\\/)", "gi"), "$1\\:").replace(new RegExp("(?<![a-zA-Z0-9])(www)\\.", "gi"), "$1\\.").replace(new RegExp("[$~]|(?<!\\\\)=(?==)|(?<==)=", "g"), "\\$&");
     if (atBlockStart2) {
       out = out.replace(/^([ \t]{0,3})(#{1,6})(?=\s|$)/, "$1\\$2").replace(/^([ \t]{0,3})>/, "$1\\>").replace(/^([ \t]*[-+*])(\s|$)/, (_, m, ws) => m.replace(/([-+*])$/, "\\$1") + ws).replace(/^([ \t]{0,3})(-)(?=(?:[ \t]*[-:|])+[ \t]*$)/, "$1\\$2").replace(/^([ \t]{0,3})(-)(?=[ \t]*\|)/, "$1\\$2").replace(/^([ \t]{0,3})(=+)(?=[ \t]*$)/, "$1\\$2").replace(/^([ \t]{0,3})(\d{1,9})([.)])(?=\s|$)/, "$1$2\\$3").replace(/^(?: {4}| {0,3}\t)(?=\S)/, (m) => (m[0] === "	" ? "&#9;" : "&#32;") + m.slice(1));
     }
@@ -15580,27 +15580,25 @@ $$`;
   }
   function liftSelectedListItemsWithOrder(state, schema2) {
     const { $from, $to, empty: empty2, from: from2, to } = state.selection;
-    const listAncestor = findNearestListAncestor($from, schema2);
-    if (!listAncestor || $to.depth < listAncestor.depth || $to.before(listAncestor.depth) !== listAncestor.pos) return null;
-    const { node: listNode, pos: listPos } = listAncestor;
+    const range = $from.blockRange($to, (node) => node.firstChild?.type === schema2.nodes.list_item);
+    if (!range) return null;
+    const listNode = range.parent;
+    const listPos = $from.before(range.depth);
     const isOrdered = listNode.type === schema2.nodes.ordered_list;
     const baseOrder = isOrdered ? Math.max(0, Number(listNode.attrs.order ?? 1)) : 1;
-    const firstIdx = $from.index(listAncestor.depth);
-    const lastIdx = $to.index(listAncestor.depth);
-    const nested = $from.node(listAncestor.depth - 1).type === schema2.nodes.list_item;
+    const firstIdx = range.startIndex;
+    const lastIdx = range.endIndex - 1;
+    const nested = $from.node(range.depth - 1).type === schema2.nodes.list_item;
     if (nested || firstIdx === lastIdx && lastIdx === listNode.childCount - 1) {
       let liftTr = null;
       if (liftListItem(schema2.nodes.list_item)(state, (t) => {
         liftTr = t;
       })) {
-        if (nested && isOrdered) {
-          const lifted = $from.blockRange($to, (node) => node.firstChild?.type === schema2.nodes.list_item);
-          if (lifted && lifted.depth === listAncestor.depth && lifted.endIndex < listNode.childCount) {
-            const remainingPos = liftTr.mapping.map(lifted.end + 1);
-            const remaining = findNearestListAncestor(liftTr.doc.resolve(remainingPos), schema2);
-            if (remaining?.node.type === listNode.type && remaining.node.firstChild === listNode.child(lifted.endIndex)) {
-              liftTr.setNodeMarkup(remaining.pos, null, { ...remaining.node.attrs, order: baseOrder + lifted.endIndex });
-            }
+        if (nested && isOrdered && range.endIndex < listNode.childCount) {
+          const remainingPos = liftTr.mapping.map(range.end + 1);
+          const remaining = findNearestListAncestor(liftTr.doc.resolve(remainingPos), schema2);
+          if (remaining?.node.type === listNode.type && remaining.node.firstChild === listNode.child(range.endIndex)) {
+            liftTr.setNodeMarkup(remaining.pos, null, { ...remaining.node.attrs, order: baseOrder + range.endIndex });
           }
         }
         return liftTr;
@@ -15663,9 +15661,10 @@ $$`;
     } else {
       const selStart = Math.min(liftedEnd, liftedStart + itemRelFrom);
       const selEnd = Math.max(selStart, liftedEnd - itemRelEndFromEnd);
+      const backwards = state.selection.anchor > state.selection.head;
       tr.setSelection(TextSelection.between(
-        tr.doc.resolve(selStart),
-        tr.doc.resolve(selEnd)
+        tr.doc.resolve(backwards ? selEnd : selStart),
+        tr.doc.resolve(backwards ? selStart : selEnd)
       ));
     }
     return tr;
@@ -15916,7 +15915,7 @@ $$`;
             dispatch(tr.scrollIntoView());
             return true;
           }
-          const liftAll = applyHeadingOrParagraph(state, dispatch, schema2, { level: null });
+          const liftAll = applyHeadingOrParagraph(state, dispatch, schema2, { preserveInlineMarks: true });
           return liftAll.handled;
         }
       }
@@ -16439,7 +16438,10 @@ $$`;
         if (isBlocked()) return true;
         const tables = getTableEditor?.();
         if (tables?.context?.() && tables.navigate?.(true)) return true;
-        return liftListItem(schema2.nodes.list_item)(state, dispatch);
+        const tr = liftSelectedListItemsWithOrder(state, schema2);
+        if (!tr) return false;
+        if (dispatch) dispatch(tr.scrollIntoView());
+        return true;
       },
       "Mod-z": () => {
         if (isBlocked()) return true;
@@ -16874,7 +16876,7 @@ $$`;
         listStarts.push(startAttr && /^[+-]?\d+$/.test(startAttr) ? Number(startAttr) : 1);
       }
       if (tag === "A" && node.hasAttribute("href")) {
-        href = node.getAttribute("href").replace(/[ \u0080-\uD7FF\uE000-\u{10FFFF}]/gu, encodeURIComponent);
+        href = node.getAttribute("href").replace(/[\x00-\x20"<>\[\\\]^`{|}\x7F-\uD7FF\uE000-\u{10FFFF}]/gu, encodeURIComponent);
       }
       if (node.classList?.contains("fastra-pm-li-content") || tag === "DIV" && node.classList?.contains("ProseMirror")) {
         for (const child of node.childNodes) visit(child, style, tableCell, href);
@@ -19075,6 +19077,7 @@ $$`;
           nativeActionIDs.clear();
           originals.clear();
           contexts.clear();
+          imageUrlOverrides.clear();
           unresolvedImageSources.clear();
         }
         trackUnresolvedImages = configuration.trackUnresolvedImages === true;
@@ -19212,6 +19215,12 @@ $$`;
           diagnostics.recordAnomaly("command-exception", `Command ${command} threw: ${err?.message || err}`, { command });
           throw err;
         }
+      },
+      adoptDocumentURL(addresses, expectedSession) {
+        if (!view || expectedSession !== session) return;
+        trackUnresolvedImages = false;
+        unresolvedImageSources.clear();
+        this.refreshImageSources(addresses, null, expectedSession);
       },
       refreshImageSources(addresses, transactions, expectedSession = session) {
         if (!view || expectedSession !== session) return;

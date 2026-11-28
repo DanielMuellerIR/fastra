@@ -957,7 +957,7 @@ Fehlermeldung sichern.
 Aus einer Speicherwarnung exportierst du die Diagnose des Dokuments, das du
 gerade sichern wolltest. Mit **Trotzdem speichern** schreibst du den geprüften
 Markdown-Stand. Beim Wiederöffnen kann die formatierte Ansicht von deiner
-aktuellen Ansicht abweichen. **Abbrechen** lässt die Änderungen im Editor.
+aktuellen Ansicht abweichen. Den unveränderten Tab kannst du danach ohne weitere Rückfrage schließen. **Abbrechen** lässt die Änderungen im Editor.
 Geschützte HTML- und Formelbereiche lassen sich im WYSIWYG-Modus nicht
 formatieren. Fastra erklärt dies vor der Änderung; bearbeite solche Bereiche
 im Markdown-Quelltext.

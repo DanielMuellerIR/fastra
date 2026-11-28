@@ -191,34 +191,28 @@ function splitLeafByHardBreaksIfPartial(tr, schema, node, pos, selFrom, selTo, l
 
 function liftSelectedListItemsWithOrder(state, schema) {
   const { $from, $to, empty, from, to } = state.selection;
-  const listAncestor = findNearestListAncestor($from, schema);
-  if (!listAncestor || $to.depth < listAncestor.depth ||
-      $to.before(listAncestor.depth) !== listAncestor.pos) return null;
-
-  const { node: listNode, pos: listPos } = listAncestor;
+  // Die Auswahl kann in einer Unterliste beginnen und im nächsten äußeren
+  // Eintrag enden. ProseMirror hebt dann den gemeinsamen Listenbereich an.
+  const range = $from.blockRange($to, node => node.firstChild?.type === schema.nodes.list_item);
+  if (!range) return null;
+  const listNode = range.parent;
+  const listPos = $from.before(range.depth);
   const isOrdered = listNode.type === schema.nodes.ordered_list;
   const baseOrder = isOrdered ? Math.max(0, Number(listNode.attrs.order ?? 1)) : 1;
-
-  // Direkt betroffene Listenpunkte auf Ebene von `listNode` bestimmen.
-  const firstIdx = $from.index(listAncestor.depth);
-  const lastIdx = $to.index(listAncestor.depth);
-
-  // In verschachtelten Listen bleiben ausgerückte Einträge Listenpunkte.
-  const nested = $from.node(listAncestor.depth - 1).type === schema.nodes.list_item;
+  const firstIdx = range.startIndex;
+  const lastIdx = range.endIndex - 1;
+  const nested = $from.node(range.depth - 1).type === schema.nodes.list_item;
   if (nested || (firstIdx === lastIdx && lastIdx === listNode.childCount - 1)) {
     let liftTr = null;
     if (liftListItem(schema.nodes.list_item)(state, t => { liftTr = t; })) {
-      if (nested && isOrdered) {
-        const lifted = $from.blockRange($to, node => node.firstChild?.type === schema.nodes.list_item);
-        if (lifted && lifted.depth === listAncestor.depth && lifted.endIndex < listNode.childCount) {
-          // ProseMirror hängt den Nachlauf unter den letzten ausgerückten Punkt.
-          // Der neue Container muss mit der Nummer seines ersten Eintrags beginnen.
-          const remainingPos = liftTr.mapping.map(lifted.end + 1);
-          const remaining = findNearestListAncestor(liftTr.doc.resolve(remainingPos), schema);
-          if (remaining?.node.type === listNode.type &&
-              remaining.node.firstChild === listNode.child(lifted.endIndex)) {
-            liftTr.setNodeMarkup(remaining.pos, null, { ...remaining.node.attrs, order: baseOrder + lifted.endIndex });
-          }
+      if (nested && isOrdered && range.endIndex < listNode.childCount) {
+        // ProseMirror hängt den Nachlauf unter den letzten ausgerückten Punkt.
+        // Der neue Container muss mit der Nummer seines ersten Eintrags beginnen.
+        const remainingPos = liftTr.mapping.map(range.end + 1);
+        const remaining = findNearestListAncestor(liftTr.doc.resolve(remainingPos), schema);
+        if (remaining?.node.type === listNode.type &&
+            remaining.node.firstChild === listNode.child(range.endIndex)) {
+          liftTr.setNodeMarkup(remaining.pos, null, { ...remaining.node.attrs, order: baseOrder + range.endIndex });
         }
       }
       return liftTr;
@@ -289,9 +283,10 @@ function liftSelectedListItemsWithOrder(state, schema) {
   } else {
     const selStart = Math.min(liftedEnd, liftedStart + itemRelFrom);
     const selEnd = Math.max(selStart, liftedEnd - itemRelEndFromEnd);
+    const backwards = state.selection.anchor > state.selection.head;
     tr.setSelection(TextSelection.between(
-      tr.doc.resolve(selStart),
-      tr.doc.resolve(selEnd)
+      tr.doc.resolve(backwards ? selEnd : selStart),
+      tr.doc.resolve(backwards ? selStart : selEnd)
     ));
   }
   return tr;
@@ -579,7 +574,7 @@ function toggleListMode(state, dispatch, schema, mode /* 'bullet' | 'ordered' | 
           return true;
         }
         // Alle ausgewählten Listenpunkte sind bereits Tasks -> einheitlich zu Absätzen anheben.
-        const liftAll = applyHeadingOrParagraph(state, dispatch, schema, { level: null });
+        const liftAll = applyHeadingOrParagraph(state, dispatch, schema, { preserveInlineMarks: true });
         return liftAll.handled;
       }
     }
@@ -1155,7 +1150,10 @@ export function buildKeymap({
       if (isBlocked()) return true;
       const tables = getTableEditor?.();
       if (tables?.context?.() && tables.navigate?.(true)) return true;
-      return liftListItem(schema.nodes.list_item)(state, dispatch);
+      const tr = liftSelectedListItemsWithOrder(state, schema);
+      if (!tr) return false;
+      if (dispatch) dispatch(tr.scrollIntoView());
+      return true;
     },
     'Mod-z': () => {
       if (isBlocked()) return true;

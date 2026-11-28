@@ -7,6 +7,14 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.243.5] — 2026-11-28
+
+### Behoben
+
+- Der Markdown-Editor erhält Links und Textformatierungen beim Ausschalten mehrerer Aufgabenlisten. Beim Ausrücken mit Umschalt-Tab behalten nachfolgende Listenpunkte ihre Nummern.
+- Eingefügte FTP- und Webadressen bleiben Klartext. Die Speicherprüfung erkennt auch Linkziele mit eckigen Klammern oder geschweiften Klammern in ihrer kodierten Form.
+- macOS schließt einen unveränderten Tab nach „Trotzdem speichern“ ohne erneute Rückfrage. Relative Bildpfade aus dem ersten Speichern bleiben auf das jeweilige Dokument beschränkt.
+
 ## [v1.243.4] — 2026-11-27
 
 ### Behoben

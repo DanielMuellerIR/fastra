@@ -642,6 +642,30 @@ async function mountBridge(t, html, markdown, blocks, extra = {}) {
   return { ...environment, api, started, messages, copies };
 }
 
+test('first save resolves image paths for this document only', async t => {
+  const html = '<div data-md-block="0"><p><img src="" data-md-src="sample.png" alt="A"></p></div>';
+  const markdown = '![A](sample.png)\n';
+  const blocks = [{ id: 0, hidden: false, source: markdown }];
+  const { api, document, root, started } = await mountBridge(t, html, markdown, blocks, { trackUnresolvedImages: true });
+  assert.ok(started);
+  assert.deepEqual(api.prepareAction('fixture', 'before').unresolvedImageSources, ['sample.png']);
+  api.completeAction('fixture', 'before');
+  const url = 'fastra-preview://image/first';
+  api.adoptDocumentURL({ 'sample.png': url }, 'fixture');
+  assert.equal(root.querySelector('img[data-md-src]').getAttribute('src'), url);
+  assert.equal(api.prepareAction('fixture', 'after').unresolvedImageSources, undefined);
+  api.completeAction('fixture', 'after');
+
+  const next = document.createElement('div');
+  next.id = 'fastra-visual';
+  next.innerHTML = html;
+  root.replaceWith(next);
+  assert.ok(await api.start({ session: 'next', markdown, blocks, trackUnresolvedImages: true }));
+  api.adoptDocumentURL({ 'sample.png': url }, 'fixture');
+  assert.equal(next.querySelector('img[data-md-src]').getAttribute('src'), '');
+  assert.deepEqual(api.prepareAction('next', 'next-save').unresolvedImageSources, ['sample.png']);
+});
+
 function selectContents(environment, element, collapse = false) {
   const range = environment.document.createRange();
   range.selectNodeContents(element);

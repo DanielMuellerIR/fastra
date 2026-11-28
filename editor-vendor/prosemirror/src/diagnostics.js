@@ -211,9 +211,9 @@ export function saveAppearance(container, inputType = '') {
       listStarts.push(startAttr && /^[+-]?\d+$/.test(startAttr) ? Number(startAttr) : 1);
     }
     if (tag === 'A' && node.hasAttribute('href')) {
-      // Der Renderer kodiert Leerzeichen und Unicode in URLs als UTF-8.
+      // cmark kodiert unsichere URL-Zeichen byteweise als UTF-8.
       // Bereits kodierte Trennzeichen wie %26 bleiben unverändert.
-      href = node.getAttribute('href').replace(/[ \u0080-\uD7FF\uE000-\u{10FFFF}]/gu, encodeURIComponent);
+      href = node.getAttribute('href').replace(/[\x00-\x20"<>\[\\\]^`{|}\x7F-\uD7FF\uE000-\u{10FFFF}]/gu, encodeURIComponent);
     }
     if (node.classList?.contains('fastra-pm-li-content') || (tag === 'DIV' && node.classList?.contains('ProseMirror'))) {
       for (const child of node.childNodes) visit(child, style, tableCell, href);

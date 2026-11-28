@@ -108,8 +108,8 @@ struct MarkdownVisualLongSessionTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let file = directory.appendingPathComponent("Links.md")
         let source = "[a **b** c][ref]\n\n[ref]: <./other%20document.md?q=one&amp;b=&#169;>\n\nAdresse:\n"
-        let urlText = "http://example.com/path?a=one_two&named=&copy;&decimal=&#169;&hex=&#x1F680;&amp;"
-        let pastedTarget = "https://example.com/path?named=&copy;&decimal=&#169;&hex=&#x1F680;&amp;"
+        let urlText = "_www.example.com 1https://example.com _https://example.com ftp://example.com http://example.com/path?a=one_two&named=&copy;&decimal=&#169;&hex=&#x1F680;&amp;"
+        let pastedTarget = "https://example.com/{user}/a[0]|b?named=&copy;&decimal=&#169;&hex=&#x1F680;&amp;"
         try source.write(to: file, atomically: true, encoding: .utf8)
         let (workspace, coordinator, web, window, _, _) = try await openVisualEditor(source, documentURL: file)
         defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
@@ -147,7 +147,7 @@ struct MarkdownVisualLongSessionTests {
         let rendered = MarkdownVisualDocument.render(saved, documentURL: file).fragment.html
         #expect(rendered.contains("Adresse: " + urlText.replacingOccurrences(of: "&", with: "&amp;")))
         #expect(rendered.contains("<a href=\"./other%20document.md?q=one&amp;b=%C2%A9\">a <strong>b</strong> c</a>"))
-        #expect(rendered.contains("href=\"" + pastedTarget.replacingOccurrences(of: "&", with: "&amp;") + "\""))
+        #expect(rendered.contains("href=\"" + pastedTarget.replacingOccurrences(of: "{user}/a[0]|b", with: "%7Buser%7D/a%5B0%5D%7Cb").replacingOccurrences(of: "&", with: "&amp;") + "\""))
         #expect(rendered.contains("title=\"&amp;lt; &amp;copy; &amp;#169; &amp;#x1F680;\""))
         withExtendedLifetime(coordinator) {}
     }

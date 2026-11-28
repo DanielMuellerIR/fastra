@@ -613,6 +613,15 @@ enum MarkdownImages {
         pattern: #"(?i)<img\b(?:[^"'<>]|"[^"]*"|'[^']*')*>"#
     )
 
+    static func resolveSource(_ source: String, relativeTo documentURL: URL?) -> (url: URL, identity: String, token: String)? {
+        guard let url = localImageURL(from: source, documentURL: documentURL),
+              MarkdownPreviewAssets.imageMIMEType(for: url) != nil else { return nil }
+        let identity = imageToken(for: url)
+        // Relative Quellen können nach einem Umzug auseinanderfallen,
+        // obwohl sie jetzt dieselbe Datei bezeichnen.
+        return (url, identity, identity + "-" + stableHash(source))
+    }
+
     static func resolve(in html: String, relativeTo documentURL: URL?,
                         preservingSource: Bool = false) -> MarkdownRenderedFragment {
         let mutable = NSMutableString(string: html)
@@ -625,17 +634,13 @@ enum MarkdownImages {
             guard let attribute = attributes.first(where: { $0.name == "src" }) else { continue }
             let replacement: String
             var displayWidth: Double?
-            if let imageURL = localImageURL(from: attribute.value, documentURL: documentURL),
-               MarkdownPreviewAssets.imageMIMEType(for: imageURL) != nil {
-                let identity = imageToken(for: imageURL)
-                // Relative Quellen können nach einem Umzug auseinanderfallen,
-                // obwohl sie jetzt dieselbe Datei bezeichnen.
-                let token = identity + "-" + stableHash(attribute.value)
-                images[token] = imageURL
+            if let image = resolveSource(attribute.value, relativeTo: documentURL) {
+                let token = image.token
+                images[token] = image.url
                 sources[token] = attribute.value
                 replacement = "\(MarkdownPreviewAssets.scheme)://image/\(token)"
                 if !attributes.contains(where: { $0.name == "width" || $0.name == "height" }) {
-                    displayWidth = logicalWidth(of: imageURL, token: identity)
+                    displayWidth = logicalWidth(of: image.url, token: image.identity)
                 }
             } else { replacement = "" }
             let output = NSMutableString(string: rawTag)

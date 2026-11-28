@@ -179,6 +179,7 @@ struct EditorTab: Identifiable, Hashable {
     /// Cursor, Scrollposition und Editor-Neuaufbau folgen deshalb dem Inhalt
     /// statt versehentlich dem wiederverwendeten Platz in der Tab-Leiste.
     var documentID: UUID
+    var acknowledgedVisualSave: Workspace.VisualSaveRevision?
     /// Erklärung für einen auswählbaren, aber nicht veränderbaren Text-Tab.
     /// `nil` bezeichnet einen normalen Editor. Die Erklärung erscheint bei
     /// einem Schreibversuch direkt an der Einfügemarke.
@@ -1793,10 +1794,16 @@ final class Workspace: ObservableObject {
         return DocumentLintMode.resolve(tab: tab)
     }
 
-    /// Zeigt der aktive Tab ein Markdown-Dokument? Gemeinsame Antwort für
-    /// Vorschau, Toolbar, Bild-Drop, Tab-Leiste und Markdown-Menü — alle
-    /// folgen damit derselben Formatwahl wie der Sprach-Chip in der Fußzeile.
+    struct VisualSaveRevision: Equatable {
+        let session: String
+        let inputRevision: Int
+        let documentID: UUID
+        let contentRevision: UInt64
+        let outcome: MarkdownVisualCoordinator.SaveCheck
+    }
+
     struct VisualSaveCheckRecord: Equatable {
+        let visualRevision: VisualSaveRevision?
         let documentID: UUID
         let contentRevision: UInt64
         let candidate: String
@@ -1845,10 +1852,13 @@ final class Workspace: ObservableObject {
         contentRevision: UInt64,
         candidate: String,
         outcome: MarkdownVisualCoordinator.SaveCheck,
+        session: String? = nil, inputRevision: Int = 0,
         redactedDiagnostic: String? = nil,
         fullDiagnostic: String? = nil
     ) {
         visualSaveChecks[tabID] = VisualSaveCheckRecord(
+            visualRevision: session.map { VisualSaveRevision(session: $0, inputRevision: inputRevision,
+                documentID: documentID, contentRevision: contentRevision, outcome: outcome) },
             documentID: documentID,
             contentRevision: contentRevision,
             candidate: candidate,
@@ -1940,6 +1950,9 @@ final class Workspace: ObservableObject {
         setViewMode(.text)
     }
 
+    /// Zeigt der aktive Tab ein Markdown-Dokument? Gemeinsame Antwort für
+    /// Vorschau, Toolbar, Bild-Drop, Tab-Leiste und Markdown-Menü — alle
+    /// folgen damit derselben Formatwahl wie der Sprach-Chip in der Fußzeile.
     var activeTabIsMarkdown: Bool {
         // Git-Verlauf, Datei- und Ordnervergleiche sind read-only Sonderansichten und
         // bekommen keine Markdown-Werkzeuge, auch wenn ihr Inhalt Markdown ist.
@@ -2426,9 +2439,15 @@ final class Workspace: ObservableObject {
     /// Tippen und Löschen technisch noch als geändert markiert ist.
     private func requiresSaveBeforeClosing(_ tab: EditorTab) -> Bool {
         let candidate = tab.textForSaving(tab.content)
+        if hasPendingVisualSaveCheck(for: tab.id) { return true }
         let check = visualSaveCheck(for: tab, candidate: candidate)
-        if let check, check != .ok { return true }
-        if check == nil, hasPendingVisualSaveCheck(for: tab.id) { return true }
+        if let check, check != .ok {
+            // Eine rein visuelle Bearbeitung kann dieselben Markdown-Bytes ergeben.
+            // Nur derselbe bereits geschriebene WebKit-Stand darf ohne Rückfrage schließen.
+            guard let acknowledged = tab.acknowledgedVisualSave,
+                  acknowledged == visualSaveChecks[tab.id]?.visualRevision,
+                  tab.content.utf8.elementsEqual(candidate.utf8) else { return true }
+        }
         let isEmptyUntitled = tab.url == nil && tab.content.isEmpty
         return tab.hexEditSession.hasChanges || (tab.isDirty && !isEmptyUntitled)
     }
@@ -3864,6 +3883,7 @@ final class Workspace: ObservableObject {
             // Nur eine ausdrücklich geänderte Zeilenendenwahl vereinheitlicht.
             // Normales Speichern erhält auch gemischte Umbrüche bytegenau.
             let savedContent = tab.textForSaving(relocatedMarkdown ?? tab.content)
+            let checkedRecord = visualSaveCheck(for: tab, candidate: savedContent) == nil ? nil : visualSaveChecks[tab.id]
             guard approvesVisualMarkdownSave(tab, candidate: savedContent) else { return false }
             guard tabStillMatches() else { throw CoordinatedSaveError.tabChanged }
             guard let out = FileLoader.encodedData(
@@ -4007,7 +4027,8 @@ final class Workspace: ObservableObject {
             // Gespeicherter Stand = neue Basis: Rückgängig bis genau hierher
             // lässt den Punkt im Tab wieder verschwinden.
             tabs[finalIndex].recordSavedContentBaseline()
-            clearVisualSaveCheck(for: tab.id)
+            tabs[finalIndex].acknowledgedVisualSave = checkedRecord?.outcome == .ok ? nil : checkedRecord?.visualRevision
+            if visualSaveChecks[tab.id] == checkedRecord { clearVisualSaveCheck(for: tab.id) }
             if sameDocument {
                 tabs[finalIndex].undoHistory.documentSaved(tabs[finalIndex].content, at: url)
                 visualMarkdownEditor?.documentSaved(at: url)

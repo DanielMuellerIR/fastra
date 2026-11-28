@@ -47,8 +47,8 @@ function escapePlainSegment(segment, { atBlockStart = false, tableCell = false }
     .replace(/`/g, '\\`')
     .replace(/\[/g, '\\[')
     .replace(/\]/g, '\\]')
-    .replace(/\b(https?)(?=:\/\/):/gi, '$1\\:')
-    .replace(/\b(www)\./gi, '$1\\.')
+    .replace(/(?<![a-zA-Z])(https?|ftp):(?=\/\/)/gi, '$1\\:')
+    .replace(/(?<![a-zA-Z0-9])(www)\./gi, '$1\\.')
     .replace(/[$~]|(?<!\\)=(?==)|(?<==)=/g, '\\$&');
 
   if (atBlockStart) {

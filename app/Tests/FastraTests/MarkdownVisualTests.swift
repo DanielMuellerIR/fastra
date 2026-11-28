@@ -369,10 +369,20 @@ struct MarkdownVisualTests {
         try #require(await waitUntil { warnings.count == 2 || !workspace.tabs.contains { $0.id == tabID } })
         #expect(warnings == [.format, .format])
         #expect(workspace.activeTabID == tabID)
-        workspace.confirmCloseHandler = { _ in .dontSave }
+        workspace.markdownSaveWarningHandler = { check, canSave in
+            warnings.append(check)
+            return canSave
+        }
+        workspace.saveActiveTab()
+        try #require(await waitUntil { writes == 1 })
+        workspace.confirmCloseHandler = { _ in
+            Issue.record("Unveränderter, ausdrücklich gespeicherter Stand fragt erneut nach")
+            return .cancel
+        }
         workspace.closeTab(id: tabID)
         try #require(await waitUntil { !workspace.tabs.contains { $0.id == tabID } })
-        #expect(writes == 0)
+        #expect(warnings == [.format, .format, .format])
+        #expect(writes == 1)
     }
 
     @Test("Alle Markdown-Werkzeuge erhalten ihre sichtbare Wirkung nach Speichern und Wiederöffnen",
