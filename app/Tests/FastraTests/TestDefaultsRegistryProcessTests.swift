@@ -74,8 +74,15 @@ private func checkRegistryWriters(existing: Bool) async throws {
     let results = await withTaskGroup(of: Result<TestProcessResult, any Error>.self) { group in
         for environment in environments {
             group.addTask {
-                Result { try runTestProcess(executable, arguments: arguments,
-                                            environment: environment, timeout: 30) }
+                // Das synchrone Warten auf vier Kinder muss dem Startgate auch
+                // auf Runnern mit wenigen Swift-Executor-Threads Zeit lassen.
+                await withCheckedContinuation { continuation in
+                    Thread.detachNewThread {
+                        let result = Result { try runTestProcess(executable, arguments: arguments,
+                                                                 environment: environment, timeout: 30) }
+                        continuation.resume(returning: result)
+                    }
+                }
             }
         }
         do {

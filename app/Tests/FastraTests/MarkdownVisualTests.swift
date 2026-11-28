@@ -325,8 +325,15 @@ struct MarkdownVisualTests {
             #expect(savedText.contains("\r\n  \r\n"), Comment(rawValue: savedText))
         }
         let tabID = try #require(workspace.activeTabID)
+        var closeConfirmationRequested = false
+        workspace.confirmCloseHandler = { _ in closeConfirmationRequested = true; return .cancel }
         workspace.closeTab(id: tabID)
-        try #require(await waitUntil { !workspace.tabs.contains { $0.id == tabID } })
+        // Wie beim ersten Laden wartet auch das Schließen auf die verdeckte WebView.
+        try #require(await waitUntil(timeout: 12) {
+            !workspace.tabs.contains { $0.id == tabID } || closeConfirmationRequested || failure != nil
+        })
+        try #require(!closeConfirmationRequested)
+        try #require(failure == nil, Comment(rawValue: String(describing: failure)))
         let (_, newCoordinator, freshWeb, freshWindow) = try await reopenEditor(at: file, savedBytes: saved)
         defer { freshWeb.configuration.userContentController.removeAllScriptMessageHandlers(); freshWindow.close(); withExtendedLifetime(newCoordinator) {} }
         #expect(try await freshWeb.evaluateJavaScript("(()=>{\(paragraph)return \(reopened);})()") as? Bool == true,
